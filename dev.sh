@@ -23,7 +23,7 @@ lsof -ti:3000 | xargs kill -9 2>/dev/null
 echo "启动后端..."
 cd "$API_DIR"
 source "$VENV_PATH"
-uvicorn main:app --host 0.0.0.0 --port 8001 --reload &
+ENV=dev uvicorn main:app --host 0.0.0.0 --port 8001 --reload &
 BACK_PID=$!
 
 # 启动前端
