@@ -1,0 +1,38 @@
+# 生产环境完整依赖
+fastapi[standard]
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+starlette
+
+# 文件处理
+pdf2image
+poppler-utils
+
+# 数据库
+sqlalchemy
+pymssql
+
+# 安全认证
+python-jose[cryptography]
+pyjwt
+passlib[bcrypt]
+python-multipart
+
+# AI服务
+dashscope>=1.14.0
+openai
+python-docx
+pdf2image
+
+# WebSocket和Redis
+websockets>=11.0.0
+redis
+
+# 定时任务
+apscheduler>=3.10.0
+
+# 性能优化
+uvloop>=0.17.0
+
+# 环境配置
+python-dotenv>=1.0.0

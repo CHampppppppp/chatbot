@@ -1,0 +1,116 @@
+FROM node:20 AS builder
+
+WORKDIR /app
+
+    # 使用npm并配置镜像源
+RUN npm config set registry https://registry.npmmirror.com \
+    && npm install -g pnpm \
+    && corepack enable pnpm
+
+# 复制依赖文件
+COPY package.json ./
+
+# 仅安装生产环境依赖
+RUN rm -f pnpm-lock.yaml \
+    && pnpm install
+
+# 构建
+RUN pnpm build
+
+
+# 简化的前端容器：挂载预构建的前端并使用PM2运行
+FROM node:20-alpine
+
+# 配置apk清华源
+RUN sed -i 's#https\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.tuna.tsinghua.edu.cn/alpine#g' /etc/apk/repositories \
+    && apk update
+
+# 使用npm并配置国内软件源
+RUN npm config set registry https://registry.npmmirror.com
+
+# 安装pm2
+RUN npm install pm2 -g
+
+# 安装健康检查工具curl
+RUN apk add --no-cache curl
+
+# 设置工作目录
+WORKDIR /Chatbot
+
+
+
+# 从构建阶段复制启动服务必要文件
+COPY --from=builder /app/.output ./.output
+COPY ecosystem.config.cjs ./
+
+# 仅保留.output、ecosystem.config.cjs、package.json、node_modules
+RUN rm -rf $(ls -A | grep -v -E '^\.output$|^ecosystem\.config\.cjs$|^package\.json$|^node_modules$')
+
+# 创建非root用户（提前创建，提高安全性）
+RUN useradd -m -u 1000 chatbot && \
+    chown -R chatbot:chatbot /Chatbot
+
+# 切换到非root用户
+USER chatbot
+
+# 复制启动脚本
+COPY --chown=chatbot:chatbot <<-EOF /Chatbot/start.sh
+#!/bin/bash
+set -e
+
+# 定义颜色和图标常量
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # 重置颜色
+CHECK_MARK="✓"
+CROSS_MARK="✗"
+WARNING_MARK="⚠️"
+INFO_MARK="ℹ️"
+LAUNCH_MARK="🚀"
+
+# 检查pm2配置文件
+echo -e "${BLUE}${INFO_MARK} 检查PM2配置文件...${NC}"
+if [ ! -f "/Chatbot/ecosystem.config.cjs" ]; then
+    echo -e "${RED}${CROSS_MARK} 错误: ecosystem.config.cjs 文件不存在${NC}"
+    exit 1
+fi
+echo -e "${GREEN}${CHECK_MARK} PM2配置文件检查通过${NC}\n"
+
+# 检查NuxtJS构建产物（Nitro服务器入口）
+echo -e "${BLUE}${INFO_MARK} 检查NuxtJS构建产物...${NC}"
+if [ ! -f "/Chatbot/.output/server/index.mjs" ]; then
+    echo -e "${RED}${CROSS_MARK} 错误: .output/server/index.mjs 不存在，请确认构建正常${NC}"
+    exit 1
+fi
+echo -e "${GREEN}${CHECK_MARK} 构建产物检查通过${NC}\n"
+echo ""
+
+# 启动应用
+echo -e "${GREEN}${LAUNCH_MARK} 准备启动应用...${NC}"
+exec pm2 startup
+exec pm2 save
+exec pm2-runtime ecosystem.config.cjs
+EOF
+
+RUN chmod +x /Chatbot/start.sh
+
+# 环境变量
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+ENV PORT=3000
+ENV NITRO_HOST=0.0.0.0
+ENV NITRO_PORT=3000
+
+# 创建日志目录
+RUN mkdir -p /Chatbot/logs
+
+# 暴露端口（声明容器内应用使用的端口）
+EXPOSE 3000
+
+# 启动脚本：检查挂载的文件并启动PM2
+CMD ["/Chatbot/start.sh"]
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s CMD curl -f http://localhost:3000 || exit 1

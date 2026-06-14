@@ -1,0 +1,135 @@
+# AGENTS.md
+
+## 项目概况
+
+这是一个前后端分离的校园智能体项目。
+
+- `Chatbot/`: Nuxt 3 前端，默认开发地址当前为 `http://localhost:3000/app1`。
+- `ChatbotApi/`: FastAPI 后端，默认开发地址当前为 `http://localhost:8001`。
+- `dev.sh`: 本地一键启动脚本，会启动 Redis、后端和前端。
+
+## 目录约定
+
+- 前端页面放在 `Chatbot/pages/`。
+- 前端组件放在 `Chatbot/components/`。
+- 前端请求封装放在 `Chatbot/api/` 或 `Chatbot/plugins/`。
+- 前端跨页面状态和流程逻辑放在 `Chatbot/composables/`。
+- 前端路由守卫放在 `Chatbot/middleware/`。
+- 后端路由实现放在 `ChatbotApi/api/`。
+- 后端路由聚合放在 `ChatbotApi/router/`。
+- 后端配置放在 `ChatbotApi/common/config.py`，但密钥值必须来自环境变量。
+- 后端数据库连接和模型放在 `ChatbotApi/db/`。
+- 后端第三方 AI 服务封装放在 `ChatbotApi/utils/`。
+
+不要把临时脚本、调试输出、测试上传文件散放到根目录。需要临时验证时优先使用系统临时目录，完成后清理。
+
+## 环境变量与密钥
+
+- 禁止把密钥、token、密码、生产数据库连接串写入代码。
+- 禁止把 `.env` 内容打印到日志或回复里。
+- 修改 `.env`、密钥、token、CI/CD 配置前必须先询问用户。
+- 新增配置时优先使用环境变量，并在文档中说明变量名、用途和默认行为。
+- dev/prod 行为必须显式区分，不允许让本地开发默认跳生产 SSO 或生产域名。
+
+## 本地开发
+
+优先使用根目录脚本启动：
+
+```bash
+./dev.sh
+```
+
+手动启动前端：
+
+```bash
+cd Chatbot
+pnpm dev
+```
+
+手动启动后端：
+
+```bash
+cd ChatbotApi
+source venv/bin/activate
+ENV=dev uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+```
+
+当前前端配置包含 `app.baseURL = "/app1"`，所以本地访问路径通常是：
+
+```text
+http://localhost:3000/app1
+```
+
+如果登录守卫因为缺少课程路径而跳授权页，可以在浏览器控制台临时设置：
+
+```js
+localStorage.setItem("base_path", "app1")
+```
+
+这只是开发绕过手段。正式修复应改配置和鉴权流程，不要继续扩大硬编码路径。
+
+## 验证要求
+
+改完代码必须主动验证。按改动范围选择最小但有效的命令。
+
+前端常用验证：
+
+```bash
+cd Chatbot
+pnpm dev
+pnpm build
+```
+
+后端常用验证：
+
+```bash
+cd ChatbotApi
+source venv/bin/activate
+python -m compileall .
+ENV=dev uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+```
+
+如果项目后续补了 lint/test/typecheck，以新增命令为准，并同步更新本文件。
+
+## 代码约束
+
+- 遵守现有框架：前端用 Nuxt 3/Vue 3，后端用 FastAPI/SQLAlchemy。
+- 不为了让代码跑起来注释掉报错或吞掉异常，要找根因。
+- 不新增全局依赖；需要安装新的全局依赖前必须先询问用户。
+- 新增项目依赖前说明用途，并优先选择项目内依赖。
+- 不做无关重构，不格式化无关文件。
+- 不删除文件、目录或 git 历史，除非用户明确要求。
+- 不执行 `git push`、`git rebase`、`git reset --hard`、强制推送。
+- 不做数据库 schema 变更或数据迁移，除非用户确认。
+- 不发布、不部署到生产、不执行公开发布操作，除非用户确认。
+
+## 前端注意事项
+
+- 不要在开发环境写死生产域名、生产 SSO 地址或 `/app1` 以外的新部署路径。
+- 路由跳转优先使用 Nuxt 路由 API；只有跳外部站点时才使用 `window.location`。
+- AI 返回内容、用户输入、后端返回 HTML 不得直接 `v-html` 渲染，必须先消毒或改为安全渲染。
+- Axios/Fetch 错误处理必须避免重复触发全局错误事件。
+- 登录、授权、SSO、课程选择相关逻辑要集中收敛，避免多个文件各自拼 URL。
+
+## 后端注意事项
+
+- `SECRET_KEY`、SSO app key/secret、AI provider key、数据库连接串必须来自环境变量。
+- 鉴权依赖统一走 `common/security.py`，不要在业务接口里重复解析 token。
+- 管理员接口必须有明确权限判断，不能只校验登录态。
+- Cookie 的 `secure`、`samesite` 要区分 dev/prod。
+- 不要用 `print` 打业务日志、用户身份、SSO 响应或异常详情；使用 logger，并避免泄漏敏感信息。
+- Redis、数据库、第三方 AI 服务异常要返回稳定错误结构。
+
+## Git 与生成文件
+
+- 不提交 `node_modules/`、`.nuxt/`、`.output/`、`venv/`、`__pycache__/`、日志、临时上传文件。
+- 应用项目应提交依赖锁文件；如果调整 `.gitignore` 中 lockfile 规则，先说明原因。
+- 工作区可能已有用户改动，不能回滚或覆盖不相关改动。
+
+## 沟通约定
+
+- 默认中文沟通。
+- 结论先行，再给理由。
+- 需求模糊时先按最合理路径推进，并说明假设。
+- 大改动前先给方案，用户确认后再动手。
+

@@ -1,0 +1,18 @@
+.DS_Store
+# .output
+dist
+
+.nuxt/
+.nuxt/cache
+.nuxt/dist
+.nuxt/prerender
+
+# 构建产物
+.output/
+
+# 依赖
+node_modules
+pnpm-lock.yaml
+
+# 脚本
+*.sh

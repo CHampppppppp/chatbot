@@ -1,0 +1,84 @@
+/* 信件内容 */
+.letter {
+  width: 90vw;
+  height: 70vh;
+  background: #fff;
+  padding: 30px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+  transition: all 0.8s ease 0.5s;
+  border-radius: 5px;
+  overflow-y: auto;
+}
+
+/* 信件标题 */
+.letter :deep(h2) {
+  color: #333;
+  margin-bottom: 20px;
+  font-size: 24px;
+  text-align: center;
+  font-family: "Georgia", serif;
+}
+
+/* 信件副标题 */
+.letter :deep(h3) {
+  color: #444;
+  margin-bottom: 15px;
+  font-size: 18px;
+  font-family: "Georgia", serif;
+}
+
+/* 信件正文 */
+.letter :deep(p) {
+  color: #555;
+  line-height: 1.5;
+  margin-bottom: 15px;
+  text-indent: 2em;
+  font-size: 16px;
+}
+
+/* 列表样式 */
+.letter :deep(ul) {
+  color: #555;
+  line-height: 1.8;
+  margin-bottom: 15px;
+  padding-left: 2em;
+}
+
+.letter :deep(li) {
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+
+/* 日期 */
+.letter :deep(.date) {
+  text-align: right;
+  color: #999;
+  font-size: 14px;
+  margin-top: 10px;
+}
+
+/* 响应式设计 */
+@media (max-width: 600px) {
+  .letter {
+    width: 90vw;
+    height: 90vh;
+    padding: 20px;
+  }
+
+  .letter :deep(h2) {
+    font-size: 20px;
+  }
+
+  .letter :deep(h3) {
+    font-size: 16px;
+  }
+
+  .letter :deep(p) {
+    font-size: 14px;
+    text-indent: 1.5em;
+  }
+
+  .letter :deep(li) {
+    font-size: 14px;
+  }
+}

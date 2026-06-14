@@ -1,0 +1,53 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: chatbot_redis
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - chatbot_network
+
+  # API服务
+  chatbot-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chatbot_api
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+      - DATABASE_URL=${DATABASE_URL:-mssql+pymssql://coding_data:Hello2023!@rm-bp10v29fkj305q3smfo.sqlserver.rds.aliyuncs.com:3433/chatbot_test?charset=utf8}
+      - WAIT_FOR_REDIS=true
+      - TZ=Asia/Shanghai
+    deploy:
+      resources:
+        limits:
+          cpus: "3" # 限制CPU使用量为3个核心
+          memory: 1G # 限制内存使用量为1G
+        reservations:
+          cpus: "2" # 保留2个CPU核心
+          memory: 512M # 保留512MB内存
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./homeworks:/ChatbotApi/homeworks
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - chatbot_network
+
+volumes:
+  redis_data:
+
+networks:
+  chatbot_network:
+    driver: bridge
