@@ -11,6 +11,7 @@ poppler-utils
 # 数据库
 sqlalchemy
 pymssql
+pymysql
 
 # 安全认证
 python-jose[cryptography]

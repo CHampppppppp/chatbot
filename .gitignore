@@ -1,6 +1,7 @@
 # === 凭据 & 环境变量 ===
 .env
 .env.local
+.env.cloud
 .env.*.local
 .envrc
 secrets.json

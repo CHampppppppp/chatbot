@@ -62,6 +62,8 @@ async def handle_chat_request(
     request: Messages,
     chat_method: str = "generate_response_stream",
     extra_params: dict = None,
+    token_data: TokenData = None,
+    db: Session = None,
 ):
     """
     通用的聊天请求处理函数
@@ -70,10 +72,19 @@ async def handle_chat_request(
         request: 包含消息的请求对象
         chat_method: AliChat对象要调用的方法名
         extra_params: 额外的参数字典
+        token_data: JWT 解码后的用户身份信息
+        db: 数据库会话（用于查询用户画像）
     """
-    print(
-        f"【handle_chat_request】chat_method: {chat_method}, extra_params: {extra_params}"
-    )
+    profile_prompt = ""
+    if token_data and token_data.userId and db:
+        from utils.profile_builder import build_profile_prompt, get_user_profile
+
+        profile = get_user_profile(db, token_data.userId)
+        profile_prompt = build_profile_prompt(profile)
+
+    if profile_prompt:
+        logger.info(f"用户画像已注入 prompt: {token_data.userId}")
+
     ali_chat = AliChat()
     messages_dict_list = [
         {"role": msg.role, "content": msg.content} for msg in request.messages
@@ -91,6 +102,7 @@ async def handle_chat_request(
             messages_dict_list,
             rag=extra_params.get("rag") if extra_params else None,
             role=extra_params.get("role") if extra_params else None,
+            profile_prompt=profile_prompt,
         )
 
     return StreamingResponse(content=content, media_type="text/event-stream")
@@ -159,42 +171,31 @@ async def xunfei_image_request_handler(
     return StreamingResponse(content=content, media_type="text/event-stream")
 
 
-# 创建路由处理器的工厂函数
-def create_chat_handler(
-    chat_method: str = "generate_response_stream", extra_params: dict = None
-):
-    """
-    创建聊天处理器的工厂函数
-
-    Args:
-        chat_method: AliChat对象要调用的方法名
-        extra_params: 额外的参数字典
-    """
-
-    async def handler(request: Messages):
-        return await handle_chat_request(request, chat_method, extra_params)
-
-    async def RAGhandler(request: RAGRequest):
-        return await handle_chat_request(
-            request, extra_params={"rag": True, "role": request.role}
-        )
-
-    return RAGhandler if extra_params and extra_params.get("rag") else handler
-
-
-# 使用工厂函数创建路由处理器，进一步简化代码
-chat_handler = create_chat_handler()
-rag_handler = create_chat_handler(extra_params={"rag": True})
-
-
 @router.post("/chat", description="校园精灵")
-async def chat(request: RAGRequest):
-    return await rag_handler(request)
+async def chat(
+    request: RAGRequest,
+    token_data: TokenData = Security(verify_jwt_token),
+    db: Session = Depends(get_db),
+):
+    return await handle_chat_request(
+        request,
+        extra_params={"rag": True, "role": request.role},
+        token_data=token_data,
+        db=db,
+    )
 
 
 @router.post("/inspirationSuperman", description="灵感超人")
-async def inspirationSuperman(request: Messages):
-    return await chat_handler(request)
+async def inspirationSuperman(
+    request: Messages,
+    token_data: TokenData = Security(verify_jwt_token),
+    db: Session = Depends(get_db),
+):
+    return await handle_chat_request(
+        request,
+        token_data=token_data,
+        db=db,
+    )
 
 
 @router.post("/intelligentArtist", description="智能画家")
@@ -261,18 +262,43 @@ async def intelligentArtist(
 
 
 @router.post("/computerDoctor", description="电脑博士")
-async def computerDoctor(request: RAGRequest):
-    return await rag_handler(request)
+async def computerDoctor(
+    request: RAGRequest,
+    token_data: TokenData = Security(verify_jwt_token),
+    db: Session = Depends(get_db),
+):
+    return await handle_chat_request(
+        request,
+        extra_params={"rag": True, "role": request.role},
+        token_data=token_data,
+        db=db,
+    )
 
 
 @router.post("/cultureMaster", description="文化达人")
-async def cultureMaster(request: Messages):
-    return await chat_handler(request)
+async def cultureMaster(
+    request: Messages,
+    token_data: TokenData = Security(verify_jwt_token),
+    db: Session = Depends(get_db),
+):
+    return await handle_chat_request(
+        request,
+        token_data=token_data,
+        db=db,
+    )
 
 
 @router.post("/eloquentWarrior", description="妙语奇兵")
-async def eloquentWarrior(request: Messages):
-    return await chat_handler(request)
+async def eloquentWarrior(
+    request: Messages,
+    token_data: TokenData = Security(verify_jwt_token),
+    db: Session = Depends(get_db),
+):
+    return await handle_chat_request(
+        request,
+        token_data=token_data,
+        db=db,
+    )
 
 
 # ==================== 图像服务配额管理接口 ====================

@@ -401,6 +401,24 @@ async def get_user_info_by_code(
                     meta=record_meta,
                 )
 
+                # SSO 登录时自动创建/更新 Users 表映射
+                sso_user_id = http_data.get("userId")
+                existing_user = (
+                    db.query(models.Users)
+                    .filter(models.Users.sso_user_id == sso_user_id)
+                    .first()
+                )
+                if not existing_user:
+                    new_user = models.Users(
+                        sso_user_id=sso_user_id,
+                        real_name=http_data.get("sub"),
+                        school=http_data.get("orgName"),
+                        disable=False,
+                        role=1,
+                    )
+                    db.add(new_user)
+                    db.commit()
+
                 return BaseResponse(
                     msg="获取用户信息成功", code=200, data=http_data, response=response
                 )
@@ -599,3 +617,90 @@ async def check_authorization_status(
                 "error": "服务器错误，请联系管理员",
             },
         )
+
+
+# ==================== 用户画像接口 ====================
+
+
+class ProfileUpdate(BaseModel):
+    real_name: str | None = None
+    school: str | None = None
+    grade: str | None = None
+    Class: str | None = None
+    interests: str | None = None  # JSON 数组字符串，如 '["画画","科技"]'
+
+
+@router.get("/profile", description="获取当前用户画像")
+async def get_profile(
+    token_data: Annotated[TokenData, Security(verify_jwt_token)],
+    db: Session = Depends(get_db),
+):
+    if not token_data.userId:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"msg": "缺少用户标识"},
+        )
+    user = (
+        db.query(models.Users)
+        .filter(models.Users.sso_user_id == token_data.userId)
+        .first()
+    )
+    if not user:
+        return BaseResponse(msg="用户画像不存在", code=404, data=None)
+    return BaseResponse(
+        msg="获取成功",
+        code=200,
+        data={
+            "real_name": user.real_name,
+            "school": user.school,
+            "grade": user.grade,
+            "class": user.Class,
+            "interests": user.interests,
+        },
+    )
+
+
+@router.put("/profile", description="更新当前用户画像")
+async def update_profile(
+    profile_data: ProfileUpdate,
+    token_data: Annotated[TokenData, Security(verify_jwt_token)],
+    db: Session = Depends(get_db),
+):
+    if not token_data.userId:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"msg": "缺少用户标识"},
+        )
+    user = (
+        db.query(models.Users)
+        .filter(models.Users.sso_user_id == token_data.userId)
+        .first()
+    )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"msg": "用户不存在"},
+        )
+    if profile_data.real_name is not None:
+        user.real_name = profile_data.real_name
+    if profile_data.school is not None:
+        user.school = profile_data.school
+    if profile_data.grade is not None:
+        user.grade = profile_data.grade
+    if profile_data.Class is not None:
+        user.Class = profile_data.Class
+    if profile_data.interests is not None:
+        user.interests = profile_data.interests
+    db.commit()
+    db.refresh(user)
+    return BaseResponse(
+        msg="更新成功",
+        code=200,
+        data={
+            "real_name": user.real_name,
+            "school": user.school,
+            "grade": user.grade,
+            "class": user.Class,
+            "interests": user.interests,
+        },
+    )

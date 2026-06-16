@@ -1,12 +1,11 @@
 from sqlalchemy import (
-    NVARCHAR,
-    VARCHAR,
     Boolean,
     Column,
     DateTime,
     ForeignKey,
     Integer,
     String,
+    Text,
     func,
 )
 from sqlalchemy.orm import backref, relationship
@@ -18,13 +17,15 @@ class Users(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    user_id = Column(String, unique=True)
-    real_name = Column(NVARCHAR)
-    school = Column(NVARCHAR)
-    grade = Column(NVARCHAR)
-    Class = Column(NVARCHAR)
+    user_id = Column(String(100), unique=True)
+    real_name = Column(String(100))
+    school = Column(String(100))
+    grade = Column(String(50))
+    Class = Column(String(50))
     role = Column(Integer)
     disable = Column(Boolean)
+    sso_user_id = Column(String(100), unique=True, nullable=True)
+    interests = Column(Text, nullable=True)
 
 
 class Tasks(Base):
@@ -33,8 +34,8 @@ class Tasks(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     course_id = Column(Integer, ForeignKey("courses.id"))
-    homework = Column(NVARCHAR)
-    type = Column(NVARCHAR)
+    homework = Column(Text)
+    type = Column(String(50))
     status = Column(Integer)
     create_time = Column(DateTime)
     update_time = Column(DateTime)
@@ -46,8 +47,8 @@ class Contents(Base):
     __tablename__ = "contents"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    name = Column(NVARCHAR)
-    grade = Column(NVARCHAR)
+    name = Column(String(200))
+    grade = Column(String(50))
     level = Column(Integer)
     parent_id = Column(Integer, ForeignKey("contents.id"))
     rank = Column(Integer)
@@ -65,10 +66,10 @@ class Courses(Base):
     __tablename__ = "courses"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    content = Column(NVARCHAR)
-    describe = Column(NVARCHAR)
-    checklist = Column(NVARCHAR)
-    case = Column(NVARCHAR)
+    content = Column(Text)
+    describe = Column(Text)
+    checklist = Column(Text)
+    case = Column(Text)
     create_time = Column(DateTime)
     update_time = Column(DateTime)
     disable = Column(Boolean)
@@ -80,12 +81,12 @@ class Homeworks(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     course_id = Column(Integer, ForeignKey("courses.id"))
-    homework = Column(NVARCHAR)
-    type = Column(NVARCHAR)
+    homework = Column(Text)
+    type = Column(String(50))
     create_time = Column(DateTime)
     update_time = Column(DateTime)
     disable = Column(Boolean)
-    user_id_str = Column(VARCHAR)
+    user_id_str = Column(String(100))
     user = relationship("Users")
     course = relationship("Courses")
 
@@ -96,9 +97,9 @@ class Records(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     type = Column(Integer)
-    meta = Column(NVARCHAR)
+    meta = Column(Text)
     create_time = Column(DateTime)
-    user_id_str = Column(VARCHAR)
+    user_id_str = Column(String(100))
     user = relationship("Users")
 
 
@@ -107,7 +108,7 @@ class Classes(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     teacher_id = Column(Integer, ForeignKey("users.id"))
-    code = Column(NVARCHAR)
+    code = Column(String(100))
     time = Column(DateTime)
     disable = Column(Boolean)
     user = relationship("Users")
@@ -117,26 +118,26 @@ class PlatformRecords(Base):
     __tablename__ = "platform_records"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    user_id = Column(VARCHAR)
-    course_id = Column(VARCHAR)
+    user_id = Column(String(100))
+    course_id = Column(String(100))
     type = Column(Integer)
-    meta = Column(NVARCHAR)
-    create_time = Column(DateTime, server_default=func.getdate())
+    meta = Column(Text)
+    create_time = Column(DateTime, server_default=func.now())
 
 
 class AuthorizationCodes(Base):
     __tablename__ = "authorization_codes"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    code = Column(VARCHAR, unique=True)
-    activated_time = Column(DateTime, server_default=func.getdate())
+    code = Column(String(100), unique=True)
+    activated_time = Column(DateTime, server_default=func.now())
     expire_time = Column(DateTime)
 
 
 class ImageServiceLog(Base):
     """
     图像服务调用日志表
-    
+
     重要说明：
     - user_id 存储的是 SSO 系统的唯一用户标识（来自 JWT token 的 userId 字段）
     - 这个 userId 是用户在 SSO 系统中的唯一标识（如工号、学号等）
@@ -146,8 +147,8 @@ class ImageServiceLog(Base):
     __tablename__ = "image_service_logs"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    user_id = Column(VARCHAR, index=True)  # SSO 用户唯一标识（来自JWT token的userId字段）
-    service_type = Column(VARCHAR)  # image_generate 或 image_edit
-    status = Column(VARCHAR)  # success 或 failed
-    prompt = Column(NVARCHAR)  # 用户提示词（截断至500字符）
-    call_time = Column(DateTime, server_default=func.getdate(), index=True)  # 调用时间
+    user_id = Column(String(100), index=True)  # SSO 用户唯一标识（来自JWT token的userId字段）
+    service_type = Column(String(50))  # image_generate 或 image_edit
+    status = Column(String(50))  # success 或 failed
+    prompt = Column(String(500))  # 用户提示词（截断至500字符）
+    call_time = Column(DateTime, server_default=func.now(), index=True)  # 调用时间

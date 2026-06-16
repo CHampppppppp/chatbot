@@ -150,8 +150,21 @@ class AliChat:
     def __init__(self):
         dashscope.api_key = os.getenv("DASHSCOPE_API_KEY")
 
-    def get_rag_response_asnyc(self, messages, role):
+    def get_rag_response_asnyc(self, messages, role, profile_prompt=""):
         try:
+            api_key = os.getenv("DASHSCOPE_API_KEY")
+            app_id = os.getenv("DASHSCOPE_APP_ID")
+            missing_envs = [
+                name
+                for name, value in {
+                    "DASHSCOPE_API_KEY": api_key,
+                    "DASHSCOPE_APP_ID": app_id,
+                }.items()
+                if not value
+            ]
+            if missing_envs:
+                raise ValueError(f"缺少环境变量: {', '.join(missing_envs)}")
+
             if len(messages) == 0:
                 raise ValueError("消息列表不能为空")
             if messages[-1]["role"] != "user":
@@ -162,11 +175,14 @@ class AliChat:
                         "content": "请根据上述内容进行精简的回复，尽量控制在100字以内",
                     }
                 )
+            combined_prompt = rolePrompts[role]
+            if profile_prompt:
+                combined_prompt = profile_prompt + "\n\n" + rolePrompts[role]
             responses = Application.call(
-                api_key=os.getenv("DASHSCOPE_API_KEY"),
-                app_id=os.getenv("DASHSCOPE_APP_ID"),
+                api_key=api_key,
+                app_id=app_id,
                 messages=messages,
-                biz_params={"user_prompt_params": {"rolePrompt": rolePrompts[role]}},
+                biz_params={"user_prompt_params": {"rolePrompt": combined_prompt}},
                 flow_stream_mode="agent_format",
                 stream=True,
                 incremental_output=True,
@@ -177,8 +193,10 @@ class AliChat:
             print(f"RAG对话生成失败: {str(e)}")
             return {"error": "生成对话失败。"}
 
-    def get_response_asnyc(self, messages, is_stream=True):
+    def get_response_asnyc(self, messages, is_stream=True, profile_prompt=""):
         try:
+            if profile_prompt:
+                messages.insert(0, {"role": "system", "content": profile_prompt})
             if messages[-1]["role"] != "user":
                 # 只有当messages为空或最后一条消息的角色不是"user"时，才执行添加操作
                 messages.append(
@@ -211,11 +229,11 @@ class AliChat:
             print(f"Unexpected error: {str(e)}")
             return {"error": "All API keys failed."}
 
-    def generate_response_stream(self, message, rag=False, role="chat"):
+    def generate_response_stream(self, message, rag=False, role="chat", profile_prompt=""):
         response = (
-            self.get_response_asnyc(message, is_stream=True)
+            self.get_response_asnyc(message, is_stream=True, profile_prompt=profile_prompt)
             if not rag
-            else self.get_rag_response_asnyc(message, role)
+            else self.get_rag_response_asnyc(message, role, profile_prompt=profile_prompt)
         )
 
         # 错误处理

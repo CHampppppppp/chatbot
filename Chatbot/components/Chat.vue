@@ -260,14 +260,12 @@ const handleRoleAction = (roleType) => {
 
   scrollToBottom();
   // 数据埋点
-  records(
-    2,
-    {
-      name: ROLE_CONFIGS.find((config) => config.role === roleType)?.name,
-      time: new Date().toISOString(),
-    },
-    token.value
-  );
+  records(2, {
+    name: ROLE_CONFIGS.find((config) => config.role === roleType)?.name,
+    time: new Date().toISOString(),
+  }).catch((error) => {
+    console.error("记录角色点击失败:", error);
+  });
 };
 
 // 动态生成按钮组，为每个角色配置添加click处理函数

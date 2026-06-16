@@ -68,28 +68,10 @@ localStorage.setItem("base_path", "app1")
 
 这只是开发绕过手段。正式修复应改配置和鉴权流程，不要继续扩大硬编码路径。
 
-## 验证要求
+## 数据库切换与迁移
 
-改完代码必须主动验证。按改动范围选择最小但有效的命令。
+后端同时支持 **云 SQL Server** 和 **本地 MySQL**，通过 `DATABASE_URL` 单变量切换。
 
-前端常用验证：
-
-```bash
-cd Chatbot
-pnpm dev
-pnpm build
-```
-
-后端常用验证：
-
-```bash
-cd ChatbotApi
-source venv/bin/activate
-python -m compileall .
-ENV=dev uvicorn main:app --host 0.0.0.0 --port 8001 --reload
-```
-
-如果项目后续补了 lint/test/typecheck，以新增命令为准，并同步更新本文件。
 
 ## 代码约束
 
@@ -120,16 +102,8 @@ ENV=dev uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 - 不要用 `print` 打业务日志、用户身份、SSO 响应或异常详情；使用 logger，并避免泄漏敏感信息。
 - Redis、数据库、第三方 AI 服务异常要返回稳定错误结构。
 
-## Git 与生成文件
-
-- 不提交 `node_modules/`、`.nuxt/`、`.output/`、`venv/`、`__pycache__/`、日志、临时上传文件。
-- 应用项目应提交依赖锁文件；如果调整 `.gitignore` 中 lockfile 规则，先说明原因。
-- 工作区可能已有用户改动，不能回滚或覆盖不相关改动。
-
 ## 沟通约定
-
-- 默认中文沟通。
 - 结论先行，再给理由。
 - 需求模糊时先按最合理路径推进，并说明假设。
 - 大改动前先给方案，用户确认后再动手。
-
+- 每次实现完整的小单元改动后都要自动commit，方便rollback。

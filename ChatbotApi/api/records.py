@@ -116,7 +116,7 @@ async def add_record(
     """
     global course_id
     try:
-        if type(meta) is str:
+        if isinstance(meta, str):
             meta = json.loads(meta)
         meta.update(
             {

@@ -11,6 +11,9 @@ load_dotenv()
 # 数据库连接配置 - 支持环境变量
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL environment variable is not set")
+
 # 创建数据库引擎
 engine = create_engine(
     DATABASE_URL, pool_size=20, pool_pre_ping=True, pool_recycle=3600
