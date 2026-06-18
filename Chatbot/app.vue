@@ -26,26 +26,14 @@ function buildAppUrl(path = "/") {
   return `${base}${normalizedPath}`;
 }
 
-function buildSsoUrl() {
-  const config = useRuntimeConfig();
-  const params = new URLSearchParams({
-    response_type: "code",
-    client_id: "chatbot",
-    scope: "org_user",
-    redirect_uri: config.public.webBaseUrl,
-  });
-
-  return `${config.public.ssoLoginUrl}?${params.toString()}`;
-}
-
 function closeError() {
   showError.value = false;
 }
 
 async function handleError({ message, detail }) {
-  const config = useRuntimeConfig();
-  if (message === "登录失败" && !config.public.isDev) {
-    await navigateTo(buildSsoUrl(), { external: true });
+  if (message === "登录失败") {
+    await navigateTo("/login");
+    return;
   }
   errorMessage.value = message || "发生未知错误";
   errorDetail.value = detail || "";

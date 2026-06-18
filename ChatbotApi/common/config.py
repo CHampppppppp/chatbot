@@ -24,12 +24,3 @@ SECRET_KEY = required_env("SECRET_KEY", "dev-secret-key-change-me")
 # SSO认证配置
 SSO_APP_KEY = required_env("SSO_APP_KEY", "dev-sso-app-key")
 SSO_SECRET_KEY = required_env("SSO_SECRET_KEY", "dev-sso-secret-key")
-
-# dev 模式兜底用户信息
-DEV_DEFAULT_USER = {
-    "userId": "dev_user",
-    "username": "dev_user",
-    "orgId": "dev_org",
-    "orgName": "dev_org",
-    "userType": "student",
-}

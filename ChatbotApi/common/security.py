@@ -45,13 +45,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # 用于从Cookie中获取 JWT token
 def get_token_from_cookie(request: Request) -> str | None:
-    token = request.cookies.get("id_token")
-    if not token and not config.DEV_MODE:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"msg": "用户未登录", "error": ""},
-        )
-    return token
+    return request.cookies.get("id_token")
 
 
 def get_user(db: Session, username: str = None):
@@ -84,12 +78,6 @@ async def verify_jwt_token(
     request: Request,
     token: Annotated[str | None, Depends(get_token_from_cookie)] = None,
 ):
-    # dev 模式：没有 token 时直接使用默认用户
-    if not token and config.DEV_MODE:
-        token_data = TokenData(**config.DEV_DEFAULT_USER)
-        token_data.username = config.DEV_DEFAULT_USER["username"]
-        return token_data
-
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

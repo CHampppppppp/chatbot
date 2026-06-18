@@ -142,8 +142,26 @@
           登录
         </button>
       </form>
+
+      <div class="relative my-4">
+        <div class="absolute inset-0 flex items-center">
+          <div class="w-full border-t border-base-300"></div>
+        </div>
+        <div class="relative flex justify-center text-sm">
+          <span class="bg-base-100 px-2 text-base-content/60">或使用之江汇账号</span>
+        </div>
+      </div>
+
       <button
-        type="click"
+        type="button"
+        class="w-full bg-info text-info-content p-2 rounded-lg hover:bg-info/90"
+        @click="loginWithSSO"
+      >
+        之江汇登录
+      </button>
+
+      <button
+        type="button"
         class="w-full bg-success text-success-content p-2 rounded-lg hover:bg-success/90 mt-4"
         @click="generateCode"
       >
@@ -204,6 +222,25 @@ const generateCode = async () => {
   if (response.data?.data) {
     generated_code.value = response.data.data;
   }
+};
+
+const loginWithSSO = () => {
+  const config = useRuntimeConfig();
+
+  // 确保有默认课程路径，供 SSO 回调后跳转使用
+  if (!localStorage.getItem("base_path")) {
+    localStorage.setItem("base_path", "app1");
+  }
+
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: "chatbot",
+    scope: "org_user",
+    redirect_uri: config.public.webBaseUrl,
+  });
+
+  const ssoUrl = `${config.public.ssoLoginUrl}?${params.toString()}`;
+  navigateTo(ssoUrl, { external: true });
 };
 
 // 初始化 Clipboard.js

@@ -26,6 +26,8 @@ class Users(Base):
     disable = Column(Boolean)
     sso_user_id = Column(String(100), unique=True, nullable=True)
     interests = Column(Text, nullable=True)
+    knowledge_reserve = Column(Integer, nullable=True)  # 知识储备 0-5 分
+    active_score = Column(Integer, nullable=True)  # 活跃度分数
 
 
 class Tasks(Base):

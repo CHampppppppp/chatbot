@@ -17,16 +17,41 @@
                 任务要求
               </h2>
               <button
-                class="btn btn-outline btn-soft btn-info btn-sm ml-2"
+                class="ml-2 p-1 rounded hover:bg-base-200 text-base-content transition-colors"
+                aria-label="放大"
                 @click="increaseFontSize"
               >
-                放大
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="M21 21l-4.35-4.35" />
+                  <path d="M11 8v6" />
+                  <path d="M8 11h6" />
+                </svg>
               </button>
               <button
-                class="btn btn-outline btn-soft btn-info btn-sm ml-2"
+                class="ml-2 p-1 rounded hover:bg-base-200 text-base-content transition-colors"
+                aria-label="缩小"
                 @click="decreaseFontSize"
               >
-                缩小
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="M21 21l-4.35-4.35" />
+                  <path d="M8 11h6" />
+                </svg>
               </button>
             </div>
           </div>
@@ -81,6 +106,12 @@
             >
               重置身份
             </button>
+            <button
+              class="btn btn-soft btn-error btn-sm text-white"
+              @click="logout"
+            >
+              退出登录
+            </button>
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div class="relative">
@@ -119,6 +150,7 @@
           @cultureMaster="handleRoleChat($event, 'cultureMaster')"
           @eloquentWarrior="handleRoleChat($event, 'eloquentWarrior')"
           @clickBubble="handleClickResourceVideo($event)"
+          @removeFilePreview="removeFilePreview"
         />
       </div>
     </div>
@@ -220,7 +252,9 @@
 </template>
 <script setup>
 import Chat from "@/components/Chat.vue";
-import { showError, useFetch, useRuntimeConfig } from "nuxt/app";
+import { showError, useFetch, useRuntimeConfig, useNuxtApp } from "nuxt/app";
+
+const { $axios } = useNuxtApp();
 import { fetchChatStream } from "~/api/platform";
 import { records } from "~/api/platform";
 
@@ -621,8 +655,19 @@ const resetIdentity = () => {
   currentRole.value = "chat";
   chatMessages.value.push({
     message: rolePrompts[0],
-    role: "user",
+    role: "system",
   });
+};
+
+const logout = async () => {
+  try {
+    await $axios.post("/users/logout");
+  } catch (error) {
+    console.error("退出登录失败:", error);
+  } finally {
+    localStorage.removeItem("userInfo");
+    await navigateTo("/login");
+  }
 };
 
 async function getImageTimes() {
@@ -687,6 +732,16 @@ const uploadImage = () => {
       image_url: URL.createObjectURL(file),
       filename: file.name,
     };
+  }
+};
+
+const removeFilePreview = () => {
+  filePreview.value = {
+    image_url: "",
+    filename: "",
+  };
+  if (imageInput.value) {
+    imageInput.value.value = "";
   }
 };
 

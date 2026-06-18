@@ -18,6 +18,26 @@
           class="max-h-16 object-contain"
         />
         <p class="title text-lg font-semibold">{{ filePreview.filename }}</p>
+        <button
+          class="btn btn-ghost btn-sm btn-circle text-current"
+          aria-label="删除附件"
+          @click="$emit('removeFilePreview')"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
       </div>
       <div v-for="(item, index) in messages" :key="index">
         <div class="flex items-start" v-if="item.role == 'assistant'">
@@ -30,7 +50,7 @@
             @click="handleClickBubble"
           >
             <div
-              class="whitespace-pre-wrap unselectable"
+              class="markdown-body unselectable"
               v-html="formatAssistantMessage(item.message)"
             ></div>
             <!-- 显示图片加载骨架 -->
@@ -143,9 +163,36 @@
 
 <script setup>
 import { nextTick, ref, watch } from "vue";
+import MarkdownIt from "markdown-it";
 import { records } from "~/api/platform";
 import "viewerjs/dist/viewer.css";
 import ImageViewer from "./ImageViewer.vue";
+
+// Markdown 渲染器：禁用原始 HTML，避免 AI 返回的 HTML 造成 XSS
+const md = new MarkdownIt({
+  html: false,
+  linkify: true,
+  typographer: true,
+  breaks: true,
+});
+
+// 只允许 http/https/mailto 链接，过滤掉 javascript: 等危险协议
+const defaultLinkOpenRender =
+  md.renderer.rules.link_open ||
+  ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options));
+md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+  const hrefIndex = tokens[idx].attrIndex("href");
+  if (hrefIndex >= 0) {
+    const href = tokens[idx].attrs[hrefIndex][1];
+    if (!/^https?:\/\//i.test(href) && !/^mailto:/i.test(href)) {
+      tokens[idx].attrs[hrefIndex][1] = "#";
+      tokens[idx].attrPush(["onclick", "return false;"]);
+    }
+    tokens[idx].attrPush(["target", "_blank"]);
+    tokens[idx].attrPush(["rel", "noopener noreferrer"]);
+  }
+  return defaultLinkOpenRender(tokens, idx, options, env, self);
+};
 // 存储viewer实例
 const viewer = ref(null);
 
@@ -159,20 +206,22 @@ const show = () => {
   viewer.value?.show();
 };
 
-function escapeHtml(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
 function formatAssistantMessage(value) {
-  const escaped = escapeHtml(value);
-  return escaped.replace(/https?:\/\/[^\s<]+/g, (url) => {
-    return `<a class="underline text-blue-500" href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
-  });
+  let normalized = String(value || "");
+
+  // 大模型有时会直接返回 HTML <a> 标签，先把它转成 markdown 链接
+  normalized = normalized.replace(
+    /<a\b[^>]*\bhref=["'](https?:\/\/[^"']+)["'][^>]*>([^<]*)<\/a>/gi,
+    (match, url, text) => {
+      return `[${text || url}](${url})`;
+    }
+  );
+
+  // 去掉其它 HTML 标签，只保留文本
+  normalized = normalized.replace(/<[^>]+>/g, "");
+
+  // 用 markdown-it 渲染，html: false 已经禁用了原始 HTML，linkify 会自动识别纯 URL
+  return md.render(normalized);
 }
 
 // 角色配置常量
@@ -240,6 +289,7 @@ const emit = defineEmits([
   "cultureMaster",
   "eloquentWarrior",
   "clickBubble",
+  "removeFilePreview",
 ]);
 
 const sendMessage = async () => {
@@ -346,5 +396,81 @@ function handleClickBubble(e) {
 
 .generated-image:hover {
   transform: scale(1.05);
+}
+
+.markdown-body {
+  line-height: 1.6;
+}
+
+.markdown-body a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.markdown-body a:hover {
+  color: #1d4ed8;
+}
+
+.markdown-body :deep(p) {
+  margin-bottom: 0.5rem;
+}
+
+.markdown-body :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4),
+.markdown-body :deep(h5),
+.markdown-body :deep(h6) {
+  font-weight: bold;
+  margin-top: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  margin-left: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.markdown-body :deep(li) {
+  margin-bottom: 0.25rem;
+}
+
+.markdown-body :deep(code) {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-family: monospace;
+  font-size: 0.875em;
+}
+
+.markdown-body :deep(pre) {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin-bottom: 0.5rem;
+}
+
+.markdown-body :deep(pre code) {
+  background-color: transparent;
+  padding: 0;
+}
+
+.markdown-body :deep(blockquote) {
+  border-left: 4px solid #cbd5e1;
+  padding-left: 0.75rem;
+  margin-left: 0;
+  margin-bottom: 0.5rem;
+  color: #64748b;
+}
+
+.markdown-body :deep(a) {
+  color: #3b82f6;
+  text-decoration: underline;
 }
 </style>

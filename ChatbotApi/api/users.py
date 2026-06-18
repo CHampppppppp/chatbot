@@ -16,7 +16,7 @@ from fastapi import (
     status,
 )
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN
@@ -141,7 +141,12 @@ async def login_permit(
 ):
     id_token_expires = timedelta(minutes=config.ID_TOKEN_EXPIRE_MINUTES)
     id_token = create_id_token(
-        data={"sub": str(user.user_id)}, expires_delta=id_token_expires
+        data={
+            "sub": str(user.user_id),
+            "userId": str(user.user_id),
+            "userType": "teacher" if user.role == 2 else "student",
+        },
+        expires_delta=id_token_expires,
     )
 
     # 数据埋点
@@ -622,12 +627,22 @@ async def check_authorization_status(
 # ==================== 用户画像接口 ====================
 
 
+def get_user_by_token(db: Session, user_id: str):
+    """根据 token 中的 userId 查找用户，兼容 SSO 和本地登录。"""
+    user = db.query(models.Users).filter(models.Users.sso_user_id == user_id).first()
+    if not user:
+        user = db.query(models.Users).filter(models.Users.user_id == user_id).first()
+    return user
+
+
 class ProfileUpdate(BaseModel):
     real_name: str | None = None
     school: str | None = None
     grade: str | None = None
     Class: str | None = None
     interests: str | None = None  # JSON 数组字符串，如 '["画画","科技"]'
+    knowledge_reserve: int | None = Field(None, ge=0, le=5)  # 知识储备 0-5 分
+    active_score: int | None = Field(None, ge=0)  # 活跃度分数
 
 
 @router.get("/profile", description="获取当前用户画像")
@@ -640,11 +655,7 @@ async def get_profile(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"msg": "缺少用户标识"},
         )
-    user = (
-        db.query(models.Users)
-        .filter(models.Users.sso_user_id == token_data.userId)
-        .first()
-    )
+    user = get_user_by_token(db, token_data.userId)
     if not user:
         return BaseResponse(msg="用户画像不存在", code=404, data=None)
     return BaseResponse(
@@ -656,6 +667,8 @@ async def get_profile(
             "grade": user.grade,
             "class": user.Class,
             "interests": user.interests,
+            "knowledge_reserve": user.knowledge_reserve,
+            "active_score": user.active_score,
         },
     )
 
@@ -671,11 +684,7 @@ async def update_profile(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"msg": "缺少用户标识"},
         )
-    user = (
-        db.query(models.Users)
-        .filter(models.Users.sso_user_id == token_data.userId)
-        .first()
-    )
+    user = get_user_by_token(db, token_data.userId)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -691,6 +700,10 @@ async def update_profile(
         user.Class = profile_data.Class
     if profile_data.interests is not None:
         user.interests = profile_data.interests
+    if profile_data.knowledge_reserve is not None:
+        user.knowledge_reserve = profile_data.knowledge_reserve
+    if profile_data.active_score is not None:
+        user.active_score = profile_data.active_score
     db.commit()
     db.refresh(user)
     return BaseResponse(
@@ -702,5 +715,7 @@ async def update_profile(
             "grade": user.grade,
             "class": user.Class,
             "interests": user.interests,
+            "knowledge_reserve": user.knowledge_reserve,
+            "active_score": user.active_score,
         },
     )
