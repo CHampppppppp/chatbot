@@ -4,6 +4,12 @@ import logging
 from db.models import Users
 from sqlalchemy.orm import Session
 
+from utils.dimension_scorer import (
+    compute_knowledge_reserve,
+    get_active_score,
+    get_user_dimension_scores,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -13,15 +19,22 @@ def get_user_profile(db: Session, user_id: str) -> dict | None:
     if not user:
         user = db.query(Users).filter(Users.user_id == user_id).first()
     if not user:
+        user = db.query(Users).filter(Users.node_id == user_id).first()
+    if not user:
         return None
+
+    dimension_scores = get_user_dimension_scores(db, user.id)
+
     return {
         "real_name": user.real_name,
         "school": user.school,
         "grade": user.grade,
         "class": user.Class,
         "interests": user.interests,
-        "knowledge_reserve": user.knowledge_reserve,
-        "active_score": user.active_score,
+        "gender": user.gender,
+        "knowledge_reserve": compute_knowledge_reserve(dimension_scores),
+        "active_score": get_active_score(dimension_scores),
+        "dimension_scores": dimension_scores,
     }
 
 
@@ -71,6 +84,8 @@ def build_profile_prompt(profile: dict) -> str:
         parts.append(f"年级：{profile['grade']}")
     if profile.get("class"):
         parts.append(f"班级：{profile['class']}")
+    if profile.get("gender"):
+        parts.append(f"性别：{profile['gender']}")
     if profile.get("interests"):
         try:
             tags = json.loads(profile["interests"])

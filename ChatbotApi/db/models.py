@@ -4,6 +4,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     func,
@@ -25,6 +26,8 @@ class Users(Base):
     role = Column(Integer)
     disable = Column(Boolean)
     sso_user_id = Column(String(100), unique=True, nullable=True)
+    node_id = Column(String(100), unique=True, nullable=True)
+    gender = Column(String(10), nullable=True)
     interests = Column(Text, nullable=True)
     knowledge_reserve = Column(Integer, nullable=True)  # 知识储备 0-5 分
     active_score = Column(Integer, nullable=True)  # 活跃度分数
@@ -154,3 +157,30 @@ class ImageServiceLog(Base):
     status = Column(String(50))  # success 或 failed
     prompt = Column(String(500))  # 用户提示词（截断至500字符）
     call_time = Column(DateTime, server_default=func.now(), index=True)  # 调用时间
+
+
+class StudentDimensionScore(Base):
+    __tablename__ = "student_dimension_scores"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    dimension_key = Column(String(50), nullable=False)
+    dimension_value = Column(Numeric(8, 2), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    user = relationship("Users")
+
+
+class StudentDimensionScoreHistory(Base):
+    __tablename__ = "student_dimension_score_history"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    dimension_key = Column(String(50), nullable=False)
+    previous_value = Column(Numeric(8, 2), nullable=True)
+    new_value = Column(Numeric(8, 2), nullable=False)
+    change_delta = Column(Numeric(8, 2), nullable=False)
+    reason = Column(Text, nullable=False)
+    source_type = Column(String(50), default="interaction")
+    source_id = Column(String(100), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    user = relationship("Users")

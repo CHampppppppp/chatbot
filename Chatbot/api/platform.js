@@ -5,8 +5,28 @@ export const records = async (type, meta) => {
   await $axios.post("/records/add", { type, meta });
 };
 
+export const getProfile = async () => {
+  const { $axios } = useNuxtApp();
+  const res = await $axios.get("/platform/profile");
+  return res.data;
+};
+
+export const updateProfile = async (profileData) => {
+  const { $axios } = useNuxtApp();
+  const res = await $axios.put("/platform/profile", profileData);
+  return res.data;
+};
+
+export const sendFeedback = async (messageId, feedback) => {
+  const { $axios } = useNuxtApp();
+  const res = await $axios.post("/platform/feedback", {
+    message_id: messageId,
+    feedback,
+  });
+  return res.data;
+};
+
 export const fetchChatStream = (url, data, onMessage) => {
-  const controller = new AbortController();
   const { signal } = controller;
 
   const isFormData =

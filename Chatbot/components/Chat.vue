@@ -85,6 +85,30 @@
                 </ImageViewer>
               </div>
             </div>
+            <!-- 反馈按钮 -->
+            <div
+              v-if="item.id && !item.message.startsWith('正在为你')"
+              class="mt-2 flex items-center gap-2"
+            >
+              <button
+                class="btn btn-xs btn-ghost"
+                :class="{ 'btn-active text-success': item.feedback === 'like' }"
+                :disabled="item.feedback === 'like'"
+                @click="handleFeedback(item, 'like')"
+                aria-label="点赞"
+              >
+                👍
+              </button>
+              <button
+                class="btn btn-xs btn-ghost"
+                :class="{ 'btn-active text-error': item.feedback === 'dislike' }"
+                :disabled="item.feedback === 'dislike'"
+                @click="handleFeedback(item, 'dislike')"
+                aria-label="点踩"
+              >
+                👎
+              </button>
+            </div>
           </div>
         </div>
 
@@ -164,7 +188,7 @@
 <script setup>
 import { nextTick, ref, watch } from "vue";
 import MarkdownIt from "markdown-it";
-import { records } from "~/api/platform";
+import { records, sendFeedback } from "~/api/platform";
 import "viewerjs/dist/viewer.css";
 import ImageViewer from "./ImageViewer.vue";
 
@@ -360,6 +384,20 @@ const handleKeyPress = async (event) => {
 
 function handleClickBubble(e) {
   emit("clickBubble", e);
+}
+
+async function handleFeedback(item, feedback) {
+  if (!item.id || item.feedback) return;
+  try {
+    await sendFeedback(item.id, feedback);
+    item.feedback = feedback;
+  } catch (error) {
+    console.error("发送反馈失败:", error);
+  }
+}
+
+function handleImageError(e) {
+  console.error("图片加载失败:", e);
 }
 </script>
 

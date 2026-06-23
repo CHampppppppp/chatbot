@@ -100,6 +100,12 @@
           <div class="flex items-center gap-4">
             <h2 class="text-xl font-bold">校园精灵智能体</h2>
             <button
+              class="btn btn-soft btn-success btn-sm text-white"
+              @click="openProfileDialog"
+            >
+              我的画像
+            </button>
+            <button
               :disabled="loadingIndex != 0"
               class="btn btn-soft btn-info btn-sm text-white grow"
               @click="resetIdentity"
@@ -217,6 +223,69 @@
       </form>
     </dialog>
 
+    <!-- 用户画像弹窗 -->
+    <dialog ref="ProfileDialog" class="card modal" closedby="any">
+      <div class="card-body bg-base-100 rounded-lg max-w-md w-full">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="card-title text-2xl">我的画像</h2>
+          <button class="btn btn-sm btn-circle btn-ghost" @click="closeProfileDialog">✕</button>
+        </div>
+
+        <div v-if="profileLoading" class="flex justify-center py-8">
+          <span class="loading loading-spinner loading-md"></span>
+        </div>
+
+        <div v-else class="space-y-4">
+          <div class="form-control">
+            <label class="label"><span class="label-text font-medium">姓名</span></label>
+            <input v-model="profileForm.real_name" type="text" class="input input-bordered" placeholder="请输入姓名" />
+          </div>
+          <div class="form-control">
+            <label class="label"><span class="label-text font-medium">学校</span></label>
+            <input v-model="profileForm.school" type="text" class="input input-bordered" placeholder="请输入学校" />
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label"><span class="label-text font-medium">年级</span></label>
+              <input v-model="profileForm.grade" type="text" class="input input-bordered" placeholder="如：五年级" />
+            </div>
+            <div class="form-control">
+              <label class="label"><span class="label-text font-medium">班级</span></label>
+              <input v-model="profileForm.Class" type="text" class="input input-bordered" placeholder="如：3班" />
+            </div>
+          </div>
+          <div class="form-control">
+            <label class="label"><span class="label-text font-medium">兴趣标签</span></label>
+            <input v-model="profileForm.interests" type="text" class="input input-bordered" placeholder="用逗号分隔，如：画画,科技,音乐" />
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text font-medium">知识储备</span>
+                <span class="label-text-alt badge badge-info">{{ profileForm.knowledge_reserve }}/5</span>
+              </label>
+              <input v-model.number="profileForm.knowledge_reserve" type="range" min="0" max="5" class="range range-info range-sm" />
+            </div>
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text font-medium">活跃度</span>
+                <span class="label-text-alt badge badge-success">{{ profileForm.active_score }}</span>
+              </label>
+              <input v-model.number="profileForm.active_score" type="range" min="0" max="100" class="range range-success range-sm" />
+            </div>
+          </div>
+        </div>
+
+        <div v-if="!profileLoading" class="card-actions justify-end mt-6 gap-2">
+          <button class="btn btn-ghost" @click="closeProfileDialog">取消</button>
+          <button class="btn btn-primary" :disabled="profileSaving" @click="saveProfile">
+            <span v-if="profileSaving" class="loading loading-spinner loading-sm"></span>
+            保存
+          </button>
+        </div>
+      </div>
+    </dialog>
+
     <!-- 图像服务次数提示 -->
     <div
       v-if="imageAlertShow"
@@ -256,7 +325,7 @@ import { showError, useFetch, useRuntimeConfig, useNuxtApp } from "nuxt/app";
 
 const { $axios } = useNuxtApp();
 import { fetchChatStream } from "~/api/platform";
-import { records } from "~/api/platform";
+import { records, getProfile, updateProfile } from "~/api/platform";
 
 definePageMeta({
   middleware: "auth",
@@ -283,6 +352,70 @@ const increaseFontSize = () => {
 
 const ResourceRate = ref(null);
 const isImgRate = ref(false);
+
+// 用户画像
+const ProfileDialog = ref(null);
+const profileLoading = ref(false);
+const profileSaving = ref(false);
+const profileForm = ref({
+  real_name: "",
+  school: "",
+  grade: "",
+  Class: "",
+  interests: "",
+  knowledge_reserve: 0,
+  active_score: 0,
+});
+
+async function openProfileDialog() {
+  ProfileDialog.value.showModal();
+  profileLoading.value = true;
+  try {
+    const res = await getProfile();
+    const d = res?.data || res;
+    if (d) {
+      profileForm.value = {
+        real_name: d.real_name || "",
+        school: d.school || "",
+        grade: d.grade || "",
+        Class: d.class || d.Class || "",
+        interests: d.interests
+          ? (Array.isArray(d.interests) ? d.interests : JSON.parse(d.interests)).join(",")
+          : "",
+        knowledge_reserve: d.knowledge_reserve ?? 0,
+        active_score: d.active_score ?? 0,
+      };
+    }
+  } catch (e) {
+    console.error("获取画像失败", e);
+  } finally {
+    profileLoading.value = false;
+  }
+}
+
+function closeProfileDialog() {
+  ProfileDialog.value.close();
+}
+
+async function saveProfile() {
+  profileSaving.value = true;
+  try {
+    const payload = { ...profileForm.value };
+    // 将逗号分隔的兴趣转为 JSON 数组字符串
+    if (payload.interests) {
+      const tags = payload.interests.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+      payload.interests = JSON.stringify(tags);
+    } else {
+      payload.interests = "[]";
+    }
+    await updateProfile(payload);
+    closeProfileDialog();
+  } catch (e) {
+    console.error("保存画像失败", e);
+  } finally {
+    profileSaving.value = false;
+  }
+}
 
 // 图片服务剩余次数
 const generateImageTimes = ref(0);
@@ -403,6 +536,7 @@ const chat = (message) => {
         let newMessage = {
           role: "assistant",
           message: event.data,
+          id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         };
         chatMessages.value.push(newMessage);
       } else {

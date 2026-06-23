@@ -6,18 +6,25 @@ from typing import Optional
 from dotenv import load_dotenv
 
 # 请求相关
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Security, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Security, UploadFile
 from fastapi.responses import StreamingResponse
 
 # 模型相关
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from common.BaseResponse import BaseResponse
 from common.processImage import generated_unique_filename
 from common.security import TokenData, verify_jwt_token
-from db.database import get_db
+from db import models
+from db.database import SessionLocal, get_db
 from utils.ali_chat import AliChat
+from utils.dimension_scorer import (
+    compute_knowledge_reserve,
+    get_active_score,
+    get_user_by_token_user_id,
+    get_user_dimension_scores,
+)
 from utils.image_quota_manager import ImageQuotaManager, ImageServiceType
 from utils.xunfei_image import XunfeiImageGenerator
 
@@ -64,6 +71,7 @@ async def handle_chat_request(
     extra_params: dict = None,
     token_data: TokenData = None,
     db: Session = None,
+    background_tasks: BackgroundTasks = None,
 ):
     """
     通用的聊天请求处理函数
@@ -74,6 +82,7 @@ async def handle_chat_request(
         extra_params: 额外的参数字典
         token_data: JWT 解码后的用户身份信息
         db: 数据库会话（用于查询用户画像）
+        background_tasks: 后台任务（用于对话结束后异步评分）
     """
     profile_prompt = ""
     if token_data and token_data.userId and db:
@@ -105,7 +114,32 @@ async def handle_chat_request(
             profile_prompt=profile_prompt,
         )
 
+    # 流式响应结束后异步评分
+    if background_tasks and token_data and token_data.userId:
+        background_tasks.add_task(
+            _evaluate_after_chat,
+            token_data.userId,
+            messages_dict_list,
+        )
+
     return StreamingResponse(content=content, media_type="text/event-stream")
+
+
+def _evaluate_after_chat(token_user_id: str, messages: list[dict]):
+    """对话结束后异步评估维度变化。"""
+    from utils.dimension_scorer import evaluate_dimensions
+
+    db = SessionLocal()
+    try:
+        user = get_user_by_token_user_id(db, token_user_id)
+        if not user:
+            logger.warning(f"异步评分未找到用户: {token_user_id}")
+            return
+        evaluate_dimensions(db, user.id, messages)
+    except Exception as e:
+        logger.error(f"异步评分失败: {e}")
+    finally:
+        db.close()
 
 
 # 通用图像处理函数工厂函数
@@ -174,6 +208,7 @@ async def xunfei_image_request_handler(
 @router.post("/chat", description="校园精灵")
 async def chat(
     request: RAGRequest,
+    background_tasks: BackgroundTasks,
     token_data: TokenData = Security(verify_jwt_token),
     db: Session = Depends(get_db),
 ):
@@ -182,12 +217,14 @@ async def chat(
         extra_params={"rag": True, "role": request.role},
         token_data=token_data,
         db=db,
+        background_tasks=background_tasks,
     )
 
 
 @router.post("/inspirationSuperman", description="灵感超人")
 async def inspirationSuperman(
     request: Messages,
+    background_tasks: BackgroundTasks,
     token_data: TokenData = Security(verify_jwt_token),
     db: Session = Depends(get_db),
 ):
@@ -195,6 +232,7 @@ async def inspirationSuperman(
         request,
         token_data=token_data,
         db=db,
+        background_tasks=background_tasks,
     )
 
 
@@ -264,6 +302,7 @@ async def intelligentArtist(
 @router.post("/computerDoctor", description="电脑博士")
 async def computerDoctor(
     request: RAGRequest,
+    background_tasks: BackgroundTasks,
     token_data: TokenData = Security(verify_jwt_token),
     db: Session = Depends(get_db),
 ):
@@ -272,12 +311,14 @@ async def computerDoctor(
         extra_params={"rag": True, "role": request.role},
         token_data=token_data,
         db=db,
+        background_tasks=background_tasks,
     )
 
 
 @router.post("/cultureMaster", description="文化达人")
 async def cultureMaster(
     request: Messages,
+    background_tasks: BackgroundTasks,
     token_data: TokenData = Security(verify_jwt_token),
     db: Session = Depends(get_db),
 ):
@@ -285,12 +326,14 @@ async def cultureMaster(
         request,
         token_data=token_data,
         db=db,
+        background_tasks=background_tasks,
     )
 
 
 @router.post("/eloquentWarrior", description="妙语奇兵")
 async def eloquentWarrior(
     request: Messages,
+    background_tasks: BackgroundTasks,
     token_data: TokenData = Security(verify_jwt_token),
     db: Session = Depends(get_db),
 ):
@@ -298,6 +341,7 @@ async def eloquentWarrior(
         request,
         token_data=token_data,
         db=db,
+        background_tasks=background_tasks,
     )
 
 
@@ -413,3 +457,238 @@ async def admin_reset_user_quota(
     except Exception as e:
         logger.error(f"管理员重置配额失败: {str(e)}")
         return BaseResponse(msg="重置失败", code=500, err=str(e))
+
+
+# ==================== 用户画像接口 ====================
+
+
+def _get_user_by_token(db: Session, user_id: str):
+    user = db.query(models.Users).filter(models.Users.sso_user_id == user_id).first()
+    if not user:
+        user = db.query(models.Users).filter(models.Users.user_id == user_id).first()
+    if not user:
+        user = db.query(models.Users).filter(models.Users.node_id == user_id).first()
+    return user
+
+
+class ProfileUpdate(BaseModel):
+    real_name: str | None = None
+    school: str | None = None
+    grade: str | None = None
+    Class: str | None = None
+    interests: str | None = None
+    knowledge_reserve: int | None = None
+    active_score: int | None = None
+
+
+@router.get("/profile", description="获取当前用户画像")
+async def get_profile(
+    token_data: TokenData = Security(verify_jwt_token),
+    db: Session = Depends(get_db),
+):
+    user = _get_user_by_token(db, token_data.userId)
+    if not user:
+        return BaseResponse(msg="用户画像不存在", code=404, data=None)
+    return BaseResponse(
+        msg="获取成功",
+        code=200,
+        data={
+            "real_name": user.real_name,
+            "school": user.school,
+            "grade": user.grade,
+            "class": user.Class,
+            "interests": user.interests,
+            "knowledge_reserve": user.knowledge_reserve,
+            "active_score": user.active_score,
+        },
+    )
+
+
+# ==================== 维度得分与反馈接口 ====================
+
+
+class FeedbackRequest(BaseModel):
+    message_id: str
+    feedback: str = Field(..., pattern="^(like|dislike)$")
+
+
+@router.post("/feedback", description="对 AI 回复点赞或点踩")
+async def submit_feedback(
+    request: FeedbackRequest,
+    token_data: TokenData = Security(verify_jwt_token),
+    db: Session = Depends(get_db),
+):
+    """
+    用户点赞/点踩 AI 回复，同步更新 AI_SATISFACTION 维度。
+    - like: +1
+    - dislike: -1
+    最终值限制在 [0, 5]。
+    """
+    from utils.dimension_scorer import apply_feedback
+
+    user = _get_user_by_token(db, token_data.userId)
+    if not user:
+        raise HTTPException(status_code=404, detail={"msg": "用户不存在"})
+
+    delta = 1.0 if request.feedback == "like" else -1.0
+    reason = "用户点赞" if request.feedback == "like" else "用户点踩"
+
+    try:
+        result = apply_feedback(
+            db=db,
+            user_id=user.id,
+            dimension_key="AI_SATISFACTION",
+            delta=delta,
+            reason=reason,
+            source_type="feedback",
+            source_id=request.message_id,
+        )
+        return BaseResponse(
+            msg="反馈已记录",
+            code=200,
+            data={
+                "dimension_key": result["dimension_key"],
+                "new_value": result["new_value"],
+                "previous_value": result["previous_value"],
+            },
+        )
+    except Exception as e:
+        logger.error(f"记录反馈失败: {e}")
+        raise HTTPException(status_code=500, detail={"msg": "反馈记录失败"})
+
+
+@router.get("/dimensions", description="获取当前用户维度得分")
+async def get_dimensions(
+    token_data: TokenData = Security(verify_jwt_token),
+    db: Session = Depends(get_db),
+):
+    """返回当前用户所有维度最新得分，及计算出的知识储备。"""
+    user = _get_user_by_token(db, token_data.userId)
+    if not user:
+        raise HTTPException(status_code=404, detail={"msg": "用户不存在"})
+
+    scores = get_user_dimension_scores(db, user.id)
+    knowledge_reserve = compute_knowledge_reserve(scores)
+    active_score = get_active_score(scores)
+
+    return BaseResponse(
+        msg="获取成功",
+        code=200,
+        data={
+            "scores": scores,
+            "knowledge_reserve": knowledge_reserve,
+            "active_score": active_score,
+        },
+    )
+
+
+@router.get("/dimensions/history", description="获取指定维度更新历史")
+async def get_dimension_history(
+    dimension_key: str,
+    token_data: TokenData = Security(verify_jwt_token),
+    db: Session = Depends(get_db),
+):
+    """返回指定维度的更新历史（含前/后对比和 reason）。"""
+    user = _get_user_by_token(db, token_data.userId)
+    if not user:
+        raise HTTPException(status_code=404, detail={"msg": "用户不存在"})
+
+    history = (
+        db.query(models.StudentDimensionScoreHistory)
+        .filter(
+            models.StudentDimensionScoreHistory.user_id == user.id,
+            models.StudentDimensionScoreHistory.dimension_key == dimension_key,
+        )
+        .order_by(models.StudentDimensionScoreHistory.created_at.desc())
+        .all()
+    )
+
+    return BaseResponse(
+        msg="获取成功",
+        code=200,
+        data=[
+            {
+                "dimension_key": h.dimension_key,
+                "previous_value": float(h.previous_value) if h.previous_value is not None else None,
+                "new_value": float(h.new_value),
+                "change_delta": float(h.change_delta),
+                "reason": h.reason,
+                "source_type": h.source_type,
+                "source_id": h.source_id,
+                "created_at": h.created_at.isoformat() if h.created_at else None,
+            }
+            for h in history
+        ],
+    )
+
+
+class EvaluateRequest(BaseModel):
+    messages: list[Message]
+
+
+@router.post("/evaluate", description="手动触发一次维度评分")
+async def manual_evaluate(
+    request: EvaluateRequest,
+    token_data: TokenData = Security(verify_jwt_token),
+    db: Session = Depends(get_db),
+):
+    """手动触发大模型评分（测试/补评用）。"""
+    from utils.dimension_scorer import evaluate_dimensions
+
+    user = _get_user_by_token(db, token_data.userId)
+    if not user:
+        raise HTTPException(status_code=404, detail={"msg": "用户不存在"})
+
+    messages_dict_list = [
+        {"role": msg.role, "content": msg.content} for msg in request.messages
+    ]
+    updated = evaluate_dimensions(db, user.id, messages_dict_list)
+
+    return BaseResponse(
+        msg="评分完成",
+        code=200,
+        data={"updated_dimensions": updated},
+    )
+
+
+@router.put("/profile", description="更新当前用户画像")
+async def update_profile(
+    profile_data: ProfileUpdate,
+    token_data: TokenData = Security(verify_jwt_token),
+    db: Session = Depends(get_db),
+):
+    user = _get_user_by_token(db, token_data.userId)
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail={"msg": "用户不存在"},
+        )
+    if profile_data.real_name is not None:
+        user.real_name = profile_data.real_name
+    if profile_data.school is not None:
+        user.school = profile_data.school
+    if profile_data.grade is not None:
+        user.grade = profile_data.grade
+    if profile_data.Class is not None:
+        user.Class = profile_data.Class
+    if profile_data.interests is not None:
+        user.interests = profile_data.interests
+    if profile_data.knowledge_reserve is not None:
+        user.knowledge_reserve = profile_data.knowledge_reserve
+    if profile_data.active_score is not None:
+        user.active_score = profile_data.active_score
+    db.commit()
+    db.refresh(user)
+    return BaseResponse(
+        msg="更新成功",
+        code=200,
+        data={
+            "real_name": user.real_name,
+            "school": user.school,
+            "grade": user.grade,
+            "class": user.Class,
+            "interests": user.interests,
+            "knowledge_reserve": user.knowledge_reserve,
+            "active_score": user.active_score,
+        },
+    )
