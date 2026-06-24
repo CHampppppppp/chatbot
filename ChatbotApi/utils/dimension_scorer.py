@@ -49,7 +49,11 @@ def get_user_dimension_scores(db: Session, user_id: int) -> dict[str, float]:
         .filter(StudentDimensionScore.user_id == user_id)
         .all()
     )
-    return {s.dimension_key: float(s.dimension_value) for s in scores}
+    result = {s.dimension_key: float(s.dimension_value) for s in scores}
+    logger.info(
+        f"[dimension_scores] user_id={user_id} 查到 {len(result)} 个维度得分: {result}"
+    )
+    return result
 
 
 def get_user_by_token_user_id(db: Session, token_user_id: str) -> Users | None:
@@ -132,6 +136,12 @@ def apply_dimension_update(
         db.add(score)
 
     db.commit()
+
+    logger.info(
+        f"[dimension_update] user_id={user_id} dimension={dimension_key} "
+        f"previous={previous_value} new={new_value} delta={history.change_delta} "
+        f"source_type={source_type} source_id={source_id} reason={reason!r}"
+    )
 
     return {
         "dimension_key": dimension_key,
@@ -217,18 +227,21 @@ def evaluate_dimensions(
     messages: list[dict],
 ) -> list[dict[str, Any]]:
     """调用大模型评估维度变化，并应用到数据库。"""
+    logger.info(f"[evaluate_dimensions] 开始评分 user_id={user_id} 消息数={len(messages)}")
     scores = get_user_dimension_scores(db, user_id)
     if not scores:
-        logger.warning(f"用户 {user_id} 没有维度基线，跳过评分")
+        logger.warning(f"[evaluate_dimensions] 用户 {user_id} 没有维度基线，跳过评分")
         return []
 
     api_key = os.getenv("DASHSCOPE_API_KEY")
     if not api_key:
-        logger.error("DASHSCOPE_API_KEY 未设置，无法评分")
+        logger.error("[evaluate_dimensions] DASHSCOPE_API_KEY 未设置，无法评分")
         return []
 
     try:
         prompt = _build_evaluation_prompt(scores, messages)
+        logger.debug(f"[evaluate_dimensions] 评分 prompt:\n{prompt}")
+
         response = Generation.call(
             api_key=api_key,
             model=Generation.Models.qwen_turbo,
@@ -238,10 +251,12 @@ def evaluate_dimensions(
         )
 
         if not response or not response.output or not response.output.choices:
-            logger.error("大模型评分返回为空")
+            logger.error("[evaluate_dimensions] 大模型评分返回为空")
             return []
 
         content = response.output.choices[0].message.content
+        logger.info(f"[evaluate_dimensions] 大模型原始返回: {content!r}")
+
         # 清理可能的 markdown 代码块
         content = content.strip()
         if content.startswith("```json"):
@@ -254,16 +269,24 @@ def evaluate_dimensions(
 
         result = json.loads(content)
         if not isinstance(result, dict):
-            logger.error(f"大模型评分返回格式错误: {content}")
+            logger.error(f"[evaluate_dimensions] 大模型评分返回格式错误: {content}")
             return []
+
+        logger.info(f"[evaluate_dimensions] 解析后变化维度数: {len(result)}")
 
         updated = []
         for dimension_key, item in result.items():
             if dimension_key not in CORE_DIMENSIONS:
+                logger.warning(
+                    f"[evaluate_dimensions] 忽略未知维度: {dimension_key}"
+                )
                 continue
             new_value = item.get("new_value")
             reason = item.get("reason", "")
             if new_value is None or not reason:
+                logger.warning(
+                    f"[evaluate_dimensions] 维度 {dimension_key} 缺少 new_value 或 reason，跳过"
+                )
                 continue
 
             updated.append(
@@ -278,11 +301,15 @@ def evaluate_dimensions(
                 )
             )
 
+        logger.info(
+            f"[evaluate_dimensions] 评分完成 user_id={user_id} 实际更新 {len(updated)} 个维度: "
+            f"{[u['dimension_key'] for u in updated]}"
+        )
         return updated
 
     except json.JSONDecodeError as e:
-        logger.error(f"大模型评分 JSON 解析失败: {e}")
+        logger.error(f"[evaluate_dimensions] 大模型评分 JSON 解析失败: {e}")
         return []
     except Exception as e:
-        logger.error(f"大模型评分失败: {e}")
+        logger.error(f"[evaluate_dimensions] 大模型评分失败: {e}")
         return []

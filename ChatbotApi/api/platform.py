@@ -1,6 +1,9 @@
 # 文件处理相关
 import json
 import logging
+import pickle
+import uuid
+from datetime import datetime, timedelta
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -72,6 +75,7 @@ async def handle_chat_request(
     token_data: TokenData = None,
     db: Session = None,
     background_tasks: BackgroundTasks = None,
+    enable_dimension_eval: bool = False,
 ):
     """
     通用的聊天请求处理函数
@@ -83,6 +87,7 @@ async def handle_chat_request(
         token_data: JWT 解码后的用户身份信息
         db: 数据库会话（用于查询用户画像）
         background_tasks: 后台任务（用于对话结束后异步评分）
+        enable_dimension_eval: 是否在本轮对话结束后触发维度评分
     """
     profile_prompt = ""
     if token_data and token_data.userId and db:
@@ -116,8 +121,8 @@ async def handle_chat_request(
             profile_prompt=profile_prompt,
         )
 
-    # 流式响应结束后异步评分
-    if background_tasks and token_data and token_data.userId:
+    # 流式响应结束后异步评分（仅对指定角色开启）
+    if enable_dimension_eval and background_tasks and token_data and token_data.userId:
         background_tasks.add_task(
             _evaluate_after_chat,
             token_data.userId,
@@ -131,17 +136,124 @@ def _evaluate_after_chat(token_user_id: str, messages: list[dict]):
     """对话结束后异步评估维度变化。"""
     from utils.dimension_scorer import evaluate_dimensions
 
+    logger.info(
+        f"[_evaluate_after_chat] 开始异步评分 token_user_id={token_user_id} "
+        f"消息数={len(messages)}"
+    )
     db = SessionLocal()
     try:
         user = get_user_by_token_user_id(db, token_user_id)
         if not user:
-            logger.warning(f"异步评分未找到用户: {token_user_id}")
+            logger.warning(
+                f"[_evaluate_after_chat] 异步评分未找到用户: token_user_id={token_user_id}"
+            )
             return
-        evaluate_dimensions(db, user.id, messages)
+        logger.info(
+            f"[_evaluate_after_chat] 找到用户 id={user.id} user_id={user.user_id!r} "
+            f"sso_user_id={user.sso_user_id!r} node_id={user.node_id!r}"
+        )
+        updated = evaluate_dimensions(db, user.id, messages)
+        logger.info(
+            f"[_evaluate_after_chat] 用户 id={user.id} 评分完成，更新维度数={len(updated)}"
+        )
     except Exception as e:
-        logger.error(f"异步评分失败: {e}")
+        logger.error(f"[_evaluate_after_chat] 异步评分失败: {e}", exc_info=True)
     finally:
         db.close()
+
+
+# ==================== 会话结束批量评分 ====================
+
+
+class SessionEndRequest(BaseModel):
+    messages: list[Message]
+
+
+def _get_eval_session_key(session_id: str) -> str:
+    return f"eval_session:{session_id}"
+
+
+@router.post("/session/start", description="开始一个可批量评分的会话")
+async def start_session(token_data: TokenData = Security(verify_jwt_token)):
+    """返回 session_id，前端在会话期间携带，用于结束时批量评分。"""
+    session_id = str(uuid.uuid4())
+    redis = get_redis_client()
+    if not redis:
+        raise HTTPException(status_code=500, detail="服务暂不可用")
+
+    key = _get_eval_session_key(session_id)
+    await redis.setex(key, int(timedelta(hours=2).total_seconds()), pickle.dumps([]))
+    logger.info(f"[session/start] 新建评分会话 session_id={session_id} user={token_data.userId}")
+    return BaseResponse(msg="会话创建成功", code=200, data={"session_id": session_id})
+
+
+@router.post("/session/{session_id}/message", description="追加一条待评分对话消息到会话")
+async def append_session_message(
+    session_id: str,
+    request: SessionEndRequest,
+    token_data: TokenData = Security(verify_jwt_token),
+):
+    redis = get_redis_client()
+    if not redis:
+        raise HTTPException(status_code=500, detail="服务暂不可用")
+
+    key = _get_eval_session_key(session_id)
+    data = await redis.get(key)
+    if data is None:
+        raise HTTPException(status_code=404, detail={"msg": "会话不存在或已过期"})
+
+    messages = pickle.loads(data)
+    messages.extend(
+        [{"role": msg.role, "content": msg.content} for msg in request.messages]
+    )
+    # 限制会话累计消息数，避免 prompt 过长
+    max_session_messages = 30
+    if len(messages) > max_session_messages:
+        messages = messages[-max_session_messages:]
+
+    await redis.setex(key, int(timedelta(hours=2).total_seconds()), pickle.dumps(messages))
+    logger.info(
+        f"[session/message] 追加消息 session_id={session_id} "
+        f"user={token_data.userId} 当前消息数={len(messages)}"
+    )
+    return BaseResponse(msg="消息已追加", code=200, data={"message_count": len(messages)})
+
+
+@router.post("/session/{session_id}/end", description="结束会话并批量评分")
+async def end_session(
+    session_id: str,
+    background_tasks: BackgroundTasks,
+    token_data: TokenData = Security(verify_jwt_token),
+):
+    redis = get_redis_client()
+    if not redis:
+        raise HTTPException(status_code=500, detail="服务暂不可用")
+
+    key = _get_eval_session_key(session_id)
+    data = await redis.get(key)
+    if data is None:
+        raise HTTPException(status_code=404, detail={"msg": "会话不存在或已过期"})
+
+    messages = pickle.loads(data)
+    await redis.delete(key)
+
+    logger.info(
+        f"[session/end] 结束会话 session_id={session_id} "
+        f"user={token_data.userId} 总消息数={len(messages)}"
+    )
+
+    if messages and token_data.userId:
+        background_tasks.add_task(
+            _evaluate_after_chat,
+            token_data.userId,
+            messages,
+        )
+
+    return BaseResponse(
+        msg="会话已结束，正在后台评分",
+        code=200,
+        data={"session_id": session_id, "message_count": len(messages)},
+    )
 
 
 # 通用图像处理函数工厂函数
@@ -220,6 +332,7 @@ async def chat(
         token_data=token_data,
         db=db,
         background_tasks=background_tasks,
+        enable_dimension_eval=True,
     )
 
 
@@ -235,6 +348,7 @@ async def inspirationSuperman(
         token_data=token_data,
         db=db,
         background_tasks=background_tasks,
+        enable_dimension_eval=False,
     )
 
 
@@ -314,6 +428,7 @@ async def computerDoctor(
         token_data=token_data,
         db=db,
         background_tasks=background_tasks,
+        enable_dimension_eval=True,
     )
 
 
@@ -329,6 +444,7 @@ async def cultureMaster(
         token_data=token_data,
         db=db,
         background_tasks=background_tasks,
+        enable_dimension_eval=False,
     )
 
 
@@ -344,6 +460,7 @@ async def eloquentWarrior(
         token_data=token_data,
         db=db,
         background_tasks=background_tasks,
+        enable_dimension_eval=False,
     )
 
 
