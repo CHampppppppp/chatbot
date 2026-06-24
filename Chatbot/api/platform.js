@@ -27,6 +27,7 @@ export const sendFeedback = async (messageId, feedback) => {
 };
 
 export const fetchChatStream = (url, data, onMessage) => {
+  const controller = new AbortController();
   const { signal } = controller;
 
   const isFormData =

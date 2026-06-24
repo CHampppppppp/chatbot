@@ -258,22 +258,6 @@
             <label class="label"><span class="label-text font-medium">兴趣标签</span></label>
             <input v-model="profileForm.interests" type="text" class="input input-bordered" placeholder="用逗号分隔，如：画画,科技,音乐" />
           </div>
-          <div class="grid grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-medium">知识储备</span>
-                <span class="label-text-alt badge badge-info">{{ profileForm.knowledge_reserve }}/5</span>
-              </label>
-              <input v-model.number="profileForm.knowledge_reserve" type="range" min="0" max="5" class="range range-info range-sm" />
-            </div>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-medium">活跃度</span>
-                <span class="label-text-alt badge badge-success">{{ profileForm.active_score }}</span>
-              </label>
-              <input v-model.number="profileForm.active_score" type="range" min="0" max="100" class="range range-success range-sm" />
-            </div>
-          </div>
         </div>
 
         <div v-if="!profileLoading" class="card-actions justify-end mt-6 gap-2">
@@ -363,8 +347,6 @@ const profileForm = ref({
   grade: "",
   Class: "",
   interests: "",
-  knowledge_reserve: 0,
-  active_score: 0,
 });
 
 async function openProfileDialog() {
@@ -382,8 +364,6 @@ async function openProfileDialog() {
         interests: d.interests
           ? (Array.isArray(d.interests) ? d.interests : JSON.parse(d.interests)).join(",")
           : "",
-        knowledge_reserve: d.knowledge_reserve ?? 0,
-        active_score: d.active_score ?? 0,
       };
     }
   } catch (e) {

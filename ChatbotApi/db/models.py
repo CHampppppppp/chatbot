@@ -29,8 +29,7 @@ class Users(Base):
     node_id = Column(String(100), unique=True, nullable=True)
     gender = Column(String(10), nullable=True)
     interests = Column(Text, nullable=True)
-    knowledge_reserve = Column(Integer, nullable=True)  # 知识储备 0-5 分
-    active_score = Column(Integer, nullable=True)  # 活跃度分数
+    # active_score 和 knowledge_reserve 已迁移到 student_dimension_scores 表
 
 
 class Tasks(Base):

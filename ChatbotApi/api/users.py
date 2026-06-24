@@ -641,8 +641,6 @@ class ProfileUpdate(BaseModel):
     grade: str | None = None
     Class: str | None = None
     interests: str | None = None  # JSON 数组字符串，如 '["画画","科技"]'
-    knowledge_reserve: int | None = Field(None, ge=0, le=5)  # 知识储备 0-5 分
-    active_score: int | None = Field(None, ge=0)  # 活跃度分数
 
 
 @router.get("/profile", description="获取当前用户画像")
@@ -667,8 +665,6 @@ async def get_profile(
             "grade": user.grade,
             "class": user.Class,
             "interests": user.interests,
-            "knowledge_reserve": user.knowledge_reserve,
-            "active_score": user.active_score,
         },
     )
 
@@ -700,10 +696,6 @@ async def update_profile(
         user.Class = profile_data.Class
     if profile_data.interests is not None:
         user.interests = profile_data.interests
-    if profile_data.knowledge_reserve is not None:
-        user.knowledge_reserve = profile_data.knowledge_reserve
-    if profile_data.active_score is not None:
-        user.active_score = profile_data.active_score
     db.commit()
     db.refresh(user)
     return BaseResponse(
@@ -715,7 +707,5 @@ async def update_profile(
             "grade": user.grade,
             "class": user.Class,
             "interests": user.interests,
-            "knowledge_reserve": user.knowledge_reserve,
-            "active_score": user.active_score,
         },
     )
