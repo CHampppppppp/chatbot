@@ -16,18 +16,20 @@ from datetime import datetime
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, sessionmaker
 
 # 让项目根目录可导入
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# 必须先加载 .env，再导入 db.models（db.database 会在导入时读取 DATABASE_URL 创建 engine）
+load_dotenv(dotenv_path=os.getenv("ENV_FILE", ".env"))
 
 from db.models import (
     StudentDimensionScore,
     StudentDimensionScoreHistory,
     Users,
 )
-
-load_dotenv(dotenv_path=os.getenv("ENV_FILE", ".env"))
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
@@ -70,7 +72,60 @@ def parse_float(value):
         return None
 
 
-def get_or_create_user(db, row):
+def _normalize_user_id(value: str) -> str:
+    """将候选 user_id 规范化：去空格、截断长度。"""
+    return value.replace(" ", "_")[:100]
+
+
+def _generate_unique_user_id(db: Session, row: dict, index: int) -> str:
+    """
+    为 CSV 导入的学生生成 mock user_id。
+
+    优先级：
+        1. Node ID（CSV 中已有的唯一标识）
+        2. 班级_姓名
+        3. 班级_序号
+        4. student_序号
+    所有候选都保证在 users.user_id 中唯一。
+    """
+    node_id = row.get("Node ID", "").strip()
+    real_name = row.get("学生姓名", "").strip()
+    class_name = row.get("班级", "").strip()
+
+    candidates = []
+    if node_id:
+        candidates.append(node_id)
+    if class_name and real_name:
+        candidates.append(f"{class_name}_{real_name}")
+    elif real_name:
+        candidates.append(real_name)
+    if class_name:
+        candidates.append(f"{class_name}_{index:03d}")
+    candidates.append(f"student_{index:03d}")
+
+    for candidate in candidates:
+        normalized = _normalize_user_id(candidate)
+        if not normalized:
+            continue
+        existing = db.query(Users).filter(Users.user_id == normalized).first()
+        if existing is None:
+            return normalized
+
+    # 全部冲突时追加自增后缀，最多尝试 1000 次防止死循环
+    base = _normalize_user_id(candidates[-1]) or f"student_{index:03d}"
+    max_attempts = 1000
+    for counter in range(1, max_attempts + 1):
+        candidate = f"{base}_{counter}"
+        existing = db.query(Users).filter(Users.user_id == candidate).first()
+        if existing is None:
+            return candidate
+
+    raise RuntimeError(
+        f"无法为第 {index} 行生成唯一 user_id，已尝试 {max_attempts} 次"
+    )
+
+
+def get_or_create_user(db: Session, row: dict, index: int):
     node_id = row.get("Node ID", "").strip()
 
     user = None
@@ -88,9 +143,21 @@ def get_or_create_user(db, row):
             role=1,
             disable=False,
         )
-        db.add(user)
-        db.flush()
-        print(f"  新建用户: {user.real_name} (id={user.id}, node_id={user.node_id})")
+        # 竞争场景下可能与别人同时生成相同 user_id，flush 冲突时重试一次
+        for attempt in range(2):
+            user.user_id = _generate_unique_user_id(db, row, index)
+            db.add(user)
+            try:
+                db.flush()
+                break
+            except IntegrityError:
+                db.rollback()
+                if attempt == 1:
+                    raise
+        print(
+            f"  新建用户: {user.real_name} "
+            f"(id={user.id}, user_id={user.user_id}, node_id={user.node_id})"
+        )
     else:
         # 更新画像字段
         user.real_name = row.get("学生姓名", "").strip() or user.real_name
@@ -98,7 +165,13 @@ def get_or_create_user(db, row):
         user.school = row.get("学校", "").strip() or user.school
         user.grade = row.get("年级", "").strip() or user.grade
         user.gender = row.get("性别", "").strip() or user.gender
-        print(f"  更新用户: {user.real_name} (id={user.id}, node_id={user.node_id})")
+        # 补填之前导入时漏掉的 user_id
+        if not user.user_id:
+            user.user_id = _generate_unique_user_id(db, row, index)
+        print(
+            f"  更新用户: {user.real_name} "
+            f"(id={user.id}, user_id={user.user_id}, node_id={user.node_id})"
+        )
 
     return user
 
@@ -156,7 +229,7 @@ def import_csv(csv_path: str):
 
         for idx, row in enumerate(rows, 1):
             print(f"[{idx}/{len(rows)}] 处理: {row.get('学生姓名', '')}")
-            user = get_or_create_user(db, row)
+            user = get_or_create_user(db, row, idx)
 
             # 16 核心维度
             for csv_col, dimension_key in DIMENSION_COLUMNS.items():

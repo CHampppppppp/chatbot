@@ -55,6 +55,7 @@ def add_columns(engine):
         add_column_sql = "ALTER TABLE users ADD COLUMN {column} {dtype} NULL;"
 
     columns = {
+        "sso_user_id": "VARCHAR(100)",
         "node_id": "VARCHAR(100)",
         "gender": "VARCHAR(10)",
     }
@@ -75,20 +76,25 @@ def add_columns(engine):
 
         # SQL Server 需要单独创建唯一索引（不支持在 ADD 时直接 UNIQUE）
         if is_sqlserver(DATABASE_URL):
-            try:
-                conn.execute(
-                    text(
-                        "CREATE UNIQUE INDEX ux_users_node_id ON users(node_id) WHERE node_id IS NOT NULL;"
+            indexes = {
+                "sso_user_id": "ux_users_sso_user_id",
+                "node_id": "ux_users_node_id",
+            }
+            for column, index_name in indexes.items():
+                try:
+                    conn.execute(
+                        text(
+                            f"CREATE UNIQUE INDEX {index_name} ON users({column}) WHERE {column} IS NOT NULL;"
+                        )
                     )
-                )
-                conn.commit()
-                print("✅ 已创建 users.node_id 唯一索引")
-            except Exception as e:
-                error_msg = str(e).lower()
-                if "already exists" in error_msg or "重复" in error_msg:
-                    print("⚠️ 索引已存在，跳过: ux_users_node_id")
-                else:
-                    raise
+                    conn.commit()
+                    print(f"✅ 已创建 users.{column} 唯一索引")
+                except Exception as e:
+                    error_msg = str(e).lower()
+                    if "already exists" in error_msg or "重复" in error_msg:
+                        print(f"⚠️ 索引已存在，跳过: {index_name}")
+                    else:
+                        raise
 
 
 def create_dimension_tables(engine):

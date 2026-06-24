@@ -28,7 +28,6 @@ class Users(Base):
     sso_user_id = Column(String(100), unique=True, nullable=True)
     node_id = Column(String(100), unique=True, nullable=True)
     gender = Column(String(10), nullable=True)
-    interests = Column(Text, nullable=True)
     # active_score 和 knowledge_reserve 已迁移到 student_dimension_scores 表
 
 

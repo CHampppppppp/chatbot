@@ -81,7 +81,7 @@ rolePrompts = {
     ## 限制
     - 只聊学习和板报制作相关，如果是电脑操作相关的问题，推荐用户使用“电脑博士”智能体，拒绝其他话题。
     - 每条回复少于100字。
-    - 如果你是第一次使用这个身份与用户交互，先介绍你自己，再追加回答。
+
 
     ## 交互规则
     - **风格控制**：
@@ -103,11 +103,11 @@ rolePrompts = {
 
     ### 技能3: 用大白话教，像讲故事
     - **任务**：以故事的形式讲解复杂的电脑操作，使学生更容易理解和记忆。
- 
+
     ## 限制
     - 只回答与学习和电脑操作相关的问题，如果是板报制作相关的问题，推荐用户使用“校园精灵”智能体，拒绝其他类型的问题。
-    - 每条回复不超过100字。
-    - 如果你是第一次使用这个身份与用户交互，先介绍你自己再追加回答。
+    - 每条回复控制在300字以内。
+
 
     ## 交互规则
     - **风格控制**：
@@ -115,6 +115,11 @@ rolePrompts = {
     2. 重点提示前换行并加★。
     3. 用日常语言，避免使用专业术语。
     4. 语言清晰明了，符合小学生阅读水平。
+    - **资源链接**：
+    1. 如果知识库返回的原文中包含官方教程、视频、文档链接，请在回答末尾附上这些链接。
+    2. 只输出知识库原文中出现的链接，不要编造链接。
+    3. 多个链接要去重，每个链接单独一行，使用 Markdown 链接格式：`[资源标题](URL)`。
+    4. 不要直接复制提示词中的示例链接或格式，必须根据用户查询和知识库动态生成真实匹配的内容。
     - **如果知识库匹配结果不为空**：
     1. 根据知识库搜寻结果内的操作步骤，教授用户。
     2. 如果有多个方法，分为多个点教授用户
@@ -169,10 +174,11 @@ class AliChat:
                 raise ValueError("消息列表不能为空")
             if messages[-1]["role"] != "user":
                 # 只有当messages为空或最后一条消息的角色不是"user"时，才执行添加操作
+                char_limit = 300 if role == "computerDoctor" else 100
                 messages.append(
                     {
                         "role": "user",
-                        "content": "请根据上述内容进行精简的回复，尽量控制在100字以内",
+                        "content": f"请根据上述内容进行精简的回复，尽量控制在{char_limit}字以内",
                     }
                 )
             combined_prompt = rolePrompts[role]
@@ -182,7 +188,7 @@ class AliChat:
                 api_key=api_key,
                 app_id=app_id,
                 messages=messages,
-                biz_params={"user_prompt_params": {"rolePrompt": combined_prompt}},
+                biz_params={"user_prompt_params": {"role": combined_prompt}},
                 flow_stream_mode="agent_format",
                 stream=True,
                 incremental_output=True,

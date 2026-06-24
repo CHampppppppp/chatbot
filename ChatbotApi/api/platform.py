@@ -93,6 +93,8 @@ async def handle_chat_request(
 
     if profile_prompt:
         logger.info(f"用户画像已注入 prompt: {token_data.userId}")
+        if profile:
+            logger.info(f"用户画像内容: {profile}")
 
     ali_chat = AliChat()
     messages_dict_list = [
@@ -476,7 +478,6 @@ class ProfileUpdate(BaseModel):
     school: str | None = None
     grade: str | None = None
     Class: str | None = None
-    interests: str | None = None
 
 
 @router.get("/profile", description="获取当前用户画像")
@@ -495,7 +496,6 @@ async def get_profile(
             "school": user.school,
             "grade": user.grade,
             "class": user.Class,
-            "interests": user.interests,
         },
     )
 
@@ -505,10 +505,14 @@ async def get_profile(
 
 class FeedbackRequest(BaseModel):
     message_id: str
-    feedback: str = Field(..., pattern="^(like|dislike)$")
+    feedback: str | None = Field(None, pattern="^(like|dislike)$")
 
 
-@router.post("/feedback", description="对 AI 回复点赞或点踩")
+def _clamp(value: float, min_val: float = 0, max_val: float = 5) -> float:
+    return max(min_val, min(max_val, value))
+
+
+@router.post("/feedback", description="对 AI 回复点赞或点踩，支持取消和切换")
 async def submit_feedback(
     request: FeedbackRequest,
     token_data: TokenData = Security(verify_jwt_token),
@@ -516,27 +520,69 @@ async def submit_feedback(
 ):
     """
     用户点赞/点踩 AI 回复，同步更新 AI_SATISFACTION 维度。
-    - like: +1
-    - dislike: -1
+    - like: +0.5
+    - dislike: -0.5
+    - 再次点击相同反馈：取消
+    - 点击另一反馈：切换
     最终值限制在 [0, 5]。
     """
-    from utils.dimension_scorer import apply_feedback
+    from utils.dimension_scorer import apply_dimension_update
 
     user = _get_user_by_token(db, token_data.userId)
     if not user:
         raise HTTPException(status_code=404, detail={"msg": "用户不存在"})
 
-    delta = 1.0 if request.feedback == "like" else -1.0
-    reason = "用户点赞" if request.feedback == "like" else "用户点踩"
+    # 查询该消息上一条有效反馈记录
+    last_record = (
+        db.query(models.StudentDimensionScoreHistory)
+        .filter(
+            models.StudentDimensionScoreHistory.source_id == request.message_id,
+            models.StudentDimensionScoreHistory.source_type.in_(
+                ["feedback", "feedback_cancel"]
+            ),
+        )
+        .order_by(models.StudentDimensionScoreHistory.created_at.desc())
+        .first()
+    )
+
+    current_feedback = None
+    if last_record and last_record.source_type == "feedback":
+        if "点赞" in last_record.reason:
+            current_feedback = "like"
+        elif "点踩" in last_record.reason:
+            current_feedback = "dislike"
+
+    feedback_values = {"like": 0.5, "dislike": -0.5, None: 0.0}
+    current_value = feedback_values.get(current_feedback, 0.0)
+    new_value = feedback_values.get(request.feedback, 0.0)
+    delta = new_value - current_value
+
+    existing = (
+        db.query(models.StudentDimensionScore)
+        .filter(
+            models.StudentDimensionScore.user_id == user.id,
+            models.StudentDimensionScore.dimension_key == "AI_SATISFACTION",
+        )
+        .first()
+    )
+    current_score = float(existing.dimension_value) if existing else 0.0
+    updated_score = _clamp(current_score + delta)
+
+    if request.feedback is None:
+        reason = "用户取消反馈"
+        source_type = "feedback_cancel"
+    else:
+        reason = "用户点赞" if request.feedback == "like" else "用户点踩"
+        source_type = "feedback"
 
     try:
-        result = apply_feedback(
+        result = apply_dimension_update(
             db=db,
             user_id=user.id,
             dimension_key="AI_SATISFACTION",
-            delta=delta,
+            new_value=updated_score,
             reason=reason,
-            source_type="feedback",
+            source_type=source_type,
             source_id=request.message_id,
         )
         return BaseResponse(
@@ -667,8 +713,6 @@ async def update_profile(
         user.grade = profile_data.grade
     if profile_data.Class is not None:
         user.Class = profile_data.Class
-    if profile_data.interests is not None:
-        user.interests = profile_data.interests
     db.commit()
     db.refresh(user)
     return BaseResponse(
@@ -679,6 +723,5 @@ async def update_profile(
             "school": user.school,
             "grade": user.grade,
             "class": user.Class,
-            "interests": user.interests,
         },
     )

@@ -1,4 +1,3 @@
-import json
 import logging
 
 from db.models import Users
@@ -30,7 +29,6 @@ def get_user_profile(db: Session, user_id: str) -> dict | None:
         "school": user.school,
         "grade": user.grade,
         "class": user.Class,
-        "interests": user.interests,
         "gender": user.gender,
         "knowledge_reserve": compute_knowledge_reserve(dimension_scores),
         "active_score": get_active_score(dimension_scores),
@@ -43,11 +41,11 @@ def _build_recommendation_rules(profile: dict) -> list[str]:
     rules = []
     knowledge_reserve = profile.get("knowledge_reserve")
     if knowledge_reserve is not None:
-        if knowledge_reserve <= 1:
+        if knowledge_reserve <= 1.5:
             rules.append(
                 f"知识储备为 {knowledge_reserve}/5 分，属于初学水平，优先推荐难度为“简单/入门”的资源，避免复杂概念和过多步骤。"
             )
-        elif knowledge_reserve <= 3:
+        elif knowledge_reserve <= 3.5:
             rules.append(
                 f"知识储备为 {knowledge_reserve}/5 分，属于中等水平，推荐难度为“中等”的资源，可适当搭配简单资源帮助巩固。"
             )
@@ -86,14 +84,6 @@ def build_profile_prompt(profile: dict) -> str:
         parts.append(f"班级：{profile['class']}")
     if profile.get("gender"):
         parts.append(f"性别：{profile['gender']}")
-    if profile.get("interests"):
-        try:
-            tags = json.loads(profile["interests"])
-            if isinstance(tags, list) and tags:
-                parts.append(f"兴趣标签：{'、'.join(tags)}")
-        except (json.JSONDecodeError, TypeError):
-            if profile["interests"].strip():
-                parts.append(f"兴趣标签：{profile['interests']}")
     if profile.get("knowledge_reserve") is not None:
         parts.append(f"知识储备：{profile['knowledge_reserve']}/5 分")
     if profile.get("active_score") is not None:
@@ -112,4 +102,15 @@ def build_profile_prompt(profile: dict) -> str:
 
     if not sections:
         return ""
-    return "\n\n".join(sections) + "\n\n推荐时优先选择符合以上规则的资源，并简要说明推荐理由。"
+    return (
+        "\n\n".join(sections)
+        + "\n\n"
+        + "资源筛选补充说明：\n"
+        "1. 知识库返回的每条资源都包含 difficulty 字段（取值为 LOW / MEDIUM / HIGH）和 resourceType 字段（取值为 VIDEO / DOCUMENT / GAME / PRACTICE / ARTICLE）。"
+        "请直接根据这两个字段进行筛选，不要仅依赖标题猜测。\n"
+        "2. 请严格按照上述画像规则选择资源：知识储备低优先选择 difficulty=LOW，中等选择 MEDIUM，高选择 HIGH；"
+        "活跃度低优先选择 resourceType=DOCUMENT 或 ARTICLE，中等优先选择 VIDEO 或 PRACTICE，高优先选择 GAME、VIDEO 或 PRACTICE。\n"
+        "3. 如果多个资源都符合条件，按相关度从高到低排序；如果完全不符合画像的资源，不要推荐。\n"
+        "4. 推荐时必须输出资源链接，使用 Markdown 链接格式 `[资源标题](URL)`，并标注该资源的 difficulty 和 resourceType，简要说明推荐理由。"
+        "不要直接复制提示词中的示例链接或格式，必须根据用户查询和知识库动态生成真实匹配的内容。"
+    )

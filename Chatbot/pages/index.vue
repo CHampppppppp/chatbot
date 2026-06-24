@@ -254,10 +254,6 @@
               <input v-model="profileForm.Class" type="text" class="input input-bordered" placeholder="如：3班" />
             </div>
           </div>
-          <div class="form-control">
-            <label class="label"><span class="label-text font-medium">兴趣标签</span></label>
-            <input v-model="profileForm.interests" type="text" class="input input-bordered" placeholder="用逗号分隔，如：画画,科技,音乐" />
-          </div>
         </div>
 
         <div v-if="!profileLoading" class="card-actions justify-end mt-6 gap-2">
@@ -346,7 +342,6 @@ const profileForm = ref({
   school: "",
   grade: "",
   Class: "",
-  interests: "",
 });
 
 async function openProfileDialog() {
@@ -361,9 +356,6 @@ async function openProfileDialog() {
         school: d.school || "",
         grade: d.grade || "",
         Class: d.class || d.Class || "",
-        interests: d.interests
-          ? (Array.isArray(d.interests) ? d.interests : JSON.parse(d.interests)).join(",")
-          : "",
       };
     }
   } catch (e) {
@@ -381,13 +373,6 @@ async function saveProfile() {
   profileSaving.value = true;
   try {
     const payload = { ...profileForm.value };
-    // 将逗号分隔的兴趣转为 JSON 数组字符串
-    if (payload.interests) {
-      const tags = payload.interests.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
-      payload.interests = JSON.stringify(tags);
-    } else {
-      payload.interests = "[]";
-    }
     await updateProfile(payload);
     closeProfileDialog();
   } catch (e) {

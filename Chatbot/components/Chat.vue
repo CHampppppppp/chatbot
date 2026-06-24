@@ -40,75 +40,75 @@
         </button>
       </div>
       <div v-for="(item, index) in messages" :key="index">
-        <div class="flex items-start" v-if="item.role == 'assistant'">
-          <img
-            class="mr-2 h-8 w-8 rounded-full"
-            src="~/public/images/genius.png"
-          />
-          <div
-            class="flex flex-col rounded-b-xl rounded-tr-xl bg-slate-50 p-4 dark:bg-slate-800 sm:max-w-md md:max-w-2xl"
-            @click="handleClickBubble"
-          >
-            <div
-              class="markdown-body unselectable"
-              v-html="formatAssistantMessage(item.message)"
-            ></div>
-            <!-- 显示图片加载骨架 -->
-            <ImageSkeleton
-              v-if="item.message.startsWith('正在为你生成图像：')"
-              width="16rem"
-              height="16rem"
-              loadingText="正在生成图像..."
+        <div class="flex flex-col items-start" v-if="item.role == 'assistant'">
+          <div class="flex items-start">
+            <img
+              class="mr-2 h-8 w-8 rounded-full"
+              src="~/public/images/genius.png"
             />
             <div
-              v-if="item.imageUrls && item.imageUrls.length > 0"
-              class="mt-3"
+              class="flex flex-col rounded-b-xl rounded-tr-xl bg-slate-50 p-4 dark:bg-slate-800 sm:max-w-md md:max-w-2xl"
+              @click="handleClickBubble"
             >
               <div
-                v-for="(imageUrl, imgIndex) in item.imageUrls"
-                :key="imgIndex"
-                class="image-container"
+                class="markdown-body unselectable"
+                v-html="formatAssistantMessage(item.message)"
+              ></div>
+              <!-- 显示图片加载骨架 -->
+              <ImageSkeleton
+                v-if="item.message.startsWith('正在为你生成图像：')"
+                width="16rem"
+                height="16rem"
+                loadingText="正在生成图像..."
+              />
+              <div
+                v-if="item.imageUrls && item.imageUrls.length > 0"
+                class="mt-3"
               >
-                <!-- 点击预览图片 -->
-                <ImageViewer
-                  :src="imageUrl"
-                  :alt="`生成的图片 ${imgIndex + 1}`"
+                <div
+                  v-for="(imageUrl, imgIndex) in item.imageUrls"
+                  :key="imgIndex"
+                  class="image-container"
                 >
-                  <img
+                  <!-- 点击预览图片 -->
+                  <ImageViewer
                     :src="imageUrl"
                     :alt="`生成的图片 ${imgIndex + 1}`"
-                    class="generated-image"
-                    loading="lazy"
-                    @load="scrollToBottom"
-                    @error="handleImageError"
-                  />
-                </ImageViewer>
+                  >
+                    <img
+                      :src="imageUrl"
+                      :alt="`生成的图片 ${imgIndex + 1}`"
+                      class="generated-image"
+                      loading="lazy"
+                      @load="scrollToBottom"
+                      @error="handleImageError"
+                    />
+                  </ImageViewer>
+                </div>
               </div>
             </div>
-            <!-- 反馈按钮 -->
-            <div
-              v-if="item.id && !item.message.startsWith('正在为你')"
-              class="mt-2 flex items-center gap-2"
+          </div>
+          <!-- 反馈按钮 -->
+          <div
+            v-if="item.id && !item.message.startsWith('正在为你')"
+            class="ml-10 mt-1 flex items-center gap-2"
+          >
+            <button
+              class="btn btn-xs btn-ghost"
+              :class="{ 'btn-active text-success': item.feedback === 'like' }"
+              @click="handleFeedback(item, 'like')"
+              aria-label="点赞"
             >
-              <button
-                class="btn btn-xs btn-ghost"
-                :class="{ 'btn-active text-success': item.feedback === 'like' }"
-                :disabled="item.feedback === 'like'"
-                @click="handleFeedback(item, 'like')"
-                aria-label="点赞"
-              >
-                👍
-              </button>
-              <button
-                class="btn btn-xs btn-ghost"
-                :class="{ 'btn-active text-error': item.feedback === 'dislike' }"
-                :disabled="item.feedback === 'dislike'"
-                @click="handleFeedback(item, 'dislike')"
-                aria-label="点踩"
-              >
-                👎
-              </button>
-            </div>
+              👍
+            </button>
+            <button
+              class="btn btn-xs btn-ghost"
+              :class="{ 'btn-active text-error': item.feedback === 'dislike' }"
+              @click="handleFeedback(item, 'dislike')"
+              aria-label="点踩"
+            >
+              👎
+            </button>
           </div>
         </div>
 
@@ -238,6 +238,16 @@ function formatAssistantMessage(value) {
     /<a\b[^>]*\bhref=["'](https?:\/\/[^"']+)["'][^>]*>([^<]*)<\/a>/gi,
     (match, url, text) => {
       return `[${text || url}](${url})`;
+    }
+  );
+
+  // 兜底：阿里云 Agent 默认模板可能输出 ![ResourceVideoUrl](url) / ![ResourceTextbook](url)
+  // 这种图片语法在前端会被渲染成破损图片，统一转成普通 Markdown 链接
+  normalized = normalized.replace(
+    /!\[(ResourceVideoUrl|ResourceTextbook)]\(([^)]+)\)/gi,
+    (match, type, target) => {
+      const label = type === "ResourceVideoUrl" ? "视频资源" : "教材资源";
+      return `[${label}](${target})`;
     }
   );
 
@@ -387,10 +397,11 @@ function handleClickBubble(e) {
 }
 
 async function handleFeedback(item, feedback) {
-  if (!item.id || item.feedback) return;
+  if (!item.id) return;
+  const newFeedback = item.feedback === feedback ? null : feedback;
   try {
-    await sendFeedback(item.id, feedback);
-    item.feedback = feedback;
+    await sendFeedback(item.id, newFeedback);
+    item.feedback = newFeedback;
   } catch (error) {
     console.error("发送反馈失败:", error);
   }

@@ -640,7 +640,6 @@ class ProfileUpdate(BaseModel):
     school: str | None = None
     grade: str | None = None
     Class: str | None = None
-    interests: str | None = None  # JSON 数组字符串，如 '["画画","科技"]'
 
 
 @router.get("/profile", description="获取当前用户画像")
@@ -664,7 +663,6 @@ async def get_profile(
             "school": user.school,
             "grade": user.grade,
             "class": user.Class,
-            "interests": user.interests,
         },
     )
 
@@ -694,8 +692,6 @@ async def update_profile(
         user.grade = profile_data.grade
     if profile_data.Class is not None:
         user.Class = profile_data.Class
-    if profile_data.interests is not None:
-        user.interests = profile_data.interests
     db.commit()
     db.refresh(user)
     return BaseResponse(
@@ -706,6 +702,5 @@ async def update_profile(
             "school": user.school,
             "grade": user.grade,
             "class": user.Class,
-            "interests": user.interests,
         },
     )
