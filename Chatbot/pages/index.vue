@@ -238,30 +238,46 @@
         <div v-else class="space-y-4">
           <div class="form-control">
             <label class="label"><span class="label-text font-medium">姓名</span></label>
-            <input v-model="profileForm.real_name" type="text" class="input input-bordered" placeholder="请输入姓名" />
+            <input :value="profileForm.real_name || '—'" type="text" class="input input-bordered bg-base-200" readonly />
           </div>
           <div class="form-control">
             <label class="label"><span class="label-text font-medium">学校</span></label>
-            <input v-model="profileForm.school" type="text" class="input input-bordered" placeholder="请输入学校" />
+            <input :value="profileForm.school || '—'" type="text" class="input input-bordered bg-base-200" readonly />
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div class="form-control">
               <label class="label"><span class="label-text font-medium">年级</span></label>
-              <input v-model="profileForm.grade" type="text" class="input input-bordered" placeholder="如：五年级" />
+              <input :value="profileForm.grade || '—'" type="text" class="input input-bordered bg-base-200" readonly />
             </div>
             <div class="form-control">
               <label class="label"><span class="label-text font-medium">班级</span></label>
-              <input v-model="profileForm.Class" type="text" class="input input-bordered" placeholder="如：3班" />
+              <input :value="profileForm.Class || '—'" type="text" class="input input-bordered bg-base-200" readonly />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label"><span class="label-text font-medium">知识储备</span></label>
+              <input
+                :value="profileDimensions.knowledge_reserve !== null ? profileDimensions.knowledge_reserve + ' / 5' : '—'"
+                type="text"
+                class="input input-bordered bg-base-200"
+                readonly
+              />
+            </div>
+            <div class="form-control">
+              <label class="label"><span class="label-text font-medium">活跃度</span></label>
+              <input
+                :value="profileDimensions.active_score !== null ? profileDimensions.active_score + ' 分' : '—'"
+                type="text"
+                class="input input-bordered bg-base-200"
+                readonly
+              />
             </div>
           </div>
         </div>
 
         <div v-if="!profileLoading" class="card-actions justify-end mt-6 gap-2">
-          <button class="btn btn-ghost" @click="closeProfileDialog">取消</button>
-          <button class="btn btn-primary" :disabled="profileSaving" @click="saveProfile">
-            <span v-if="profileSaving" class="loading loading-spinner loading-sm"></span>
-            保存
-          </button>
+          <button class="btn btn-primary" @click="closeProfileDialog">关闭</button>
         </div>
       </div>
     </dialog>
@@ -305,7 +321,15 @@ import { showError, useFetch, useRuntimeConfig, useNuxtApp } from "nuxt/app";
 
 const { $axios } = useNuxtApp();
 import { fetchChatStream } from "~/api/platform";
-import { records, getProfile, updateProfile } from "~/api/platform";
+import {
+  records,
+  getProfile,
+  updateProfile,
+  getDimensions,
+  startEvalSession,
+  appendEvalSessionMessage,
+  endEvalSession,
+} from "~/api/platform";
 
 definePageMeta({
   middleware: "auth",
@@ -343,19 +367,33 @@ const profileForm = ref({
   grade: "",
   Class: "",
 });
+const profileDimensions = ref({
+  knowledge_reserve: null,
+  active_score: null,
+});
 
 async function openProfileDialog() {
   ProfileDialog.value.showModal();
   profileLoading.value = true;
   try {
-    const res = await getProfile();
-    const d = res?.data || res;
+    const [profileRes, dimRes] = await Promise.all([
+      getProfile(),
+      getDimensions().catch(() => null),
+    ]);
+    const d = profileRes?.data || profileRes;
     if (d) {
       profileForm.value = {
         real_name: d.real_name || "",
         school: d.school || "",
         grade: d.grade || "",
         Class: d.class || d.Class || "",
+      };
+    }
+    const dimData = dimRes?.data || dimRes;
+    if (dimData) {
+      profileDimensions.value = {
+        knowledge_reserve: dimData.knowledge_reserve ?? null,
+        active_score: dimData.active_score ?? null,
       };
     }
   } catch (e) {
@@ -379,6 +417,54 @@ async function saveProfile() {
     console.error("保存画像失败", e);
   } finally {
     profileSaving.value = false;
+  }
+}
+
+// 会话评分相关
+const evalSessionId = ref(null);
+const pendingEvalMessages = ref([]);
+
+async function ensureEvalSession() {
+  if (evalSessionId.value) return;
+  try {
+    const res = await startEvalSession();
+    evalSessionId.value = res.data?.session_id || res.session_id;
+    pendingEvalMessages.value = [];
+  } catch (e) {
+    console.error("创建评分会话失败:", e);
+  }
+}
+
+function queueEvalMessage(role, content) {
+  if (!content || !evalSessionId.value) return;
+  // 只保留 user/assistant 的有效对话，过滤系统提示和开场白
+  if (role !== "user" && role !== "assistant") return;
+  pendingEvalMessages.value.push({ role, content });
+}
+
+async function flushEvalMessages() {
+  if (!evalSessionId.value || pendingEvalMessages.value.length === 0) return;
+  try {
+    await appendEvalSessionMessage(
+      evalSessionId.value,
+      pendingEvalMessages.value
+    );
+    pendingEvalMessages.value = [];
+  } catch (e) {
+    console.error("追加评分消息失败:", e);
+  }
+}
+
+async function finishEvalSession() {
+  await flushEvalMessages();
+  if (!evalSessionId.value) return;
+  try {
+    await endEvalSession(evalSessionId.value);
+  } catch (e) {
+    console.error("结束评分会话失败:", e);
+  } finally {
+    evalSessionId.value = null;
+    pendingEvalMessages.value = [];
   }
 }
 
@@ -428,12 +514,14 @@ const chatMessages = ref([
 ]);
 
 let currentChat = null;
-const chat = (message) => {
+const chat = async (message) => {
   if (message) {
     chatMessages.value.push({
       message: message,
       role: "user",
     });
+    await ensureEvalSession();
+    queueEvalMessage("user", message);
   }
 
   const config = roleConfigs[currentRole.value];
@@ -491,6 +579,10 @@ const chat = (message) => {
           content: meta,
         });
       }
+
+      // 本轮对话结束，把 assistant 回复追加到评分会话
+      queueEvalMessage("assistant", message);
+      flushEvalMessages();
     } else if (event.data.startsWith("![Generated Image](")) {
       // 接收图像
       processImageGenerationResponse(event.data, lastMessageIndex.value);
@@ -520,12 +612,15 @@ const chat = (message) => {
 
   const runtimeConfig = useRuntimeConfig();
   const url = `${runtimeConfig.public.apiBase}/platform/${config.endpoint}`;
-  const data = chatMessages.value.slice(-5).map((item) => {
-    return {
-      content: item.message, // 创建一个新的键 content 并赋予 message 的值
-      role: item.role, // 保留 role 键和值
-    };
-  });
+  const data = chatMessages.value
+    .filter((item) => item.role === "user" || item.role === "assistant")
+    .slice(-5)
+    .map((item) => {
+      return {
+        content: item.message, // 创建一个新的键 content 并赋予 message 的值
+        role: item.role, // 保留 role 键和值
+      };
+    });
 
   let formdata = null;
   if (
@@ -622,7 +717,7 @@ const roleConfigs = {
 
 const currentRole = ref("chat");
 
-// 角色提示词
+// 角色提示词（给大模型看的 system prompt）
 const rolePrompts = [
   `
         现在你是校园精灵
@@ -750,15 +845,26 @@ const rolePrompts = [
     `,
 ];
 
+// 角色开场白（给学生看的本地展示）
+const roleGreetings = [
+  "Hi，我是校园精灵，你可以跟我直接对话，也可以根据自身需求点击对应的小精灵对话哦！😊",
+  "Hi，我是校园精灵“灵感超人”，善于提供创意并激发你的灵感，欢迎与我交流！💡",
+  "Hi，我是校园精灵“智能画家”，擅长将文字转为图片，或者编辑修改图片，欢迎将文字发给我！🎨",
+  "Hi，我是校园精灵“电脑博士”，精通电脑操作，尤其是Word、PPT的制作，欢迎与我交流！💻",
+  "Hi，我是校园精灵“文化达人”，中华传统文化的宝藏我烂熟于心，欢迎与我探讨！📚",
+  "Hi，我是校园精灵“妙语奇兵”，擅长中文和英文两种语言，欢迎与我交流！✨",
+];
+
 const resetIdentity = () => {
   currentRole.value = "chat";
   chatMessages.value.push({
-    message: rolePrompts[0],
-    role: "system",
+    message: roleGreetings[0],
+    role: "assistant",
   });
 };
 
 const logout = async () => {
+  await finishEvalSession();
   try {
     await $axios.post("/users/logout");
   } catch (error) {
@@ -795,12 +901,25 @@ async function getImageTimes() {
 const handleRoleChat = (message, role) => {
   currentRole.value = role;
   loadingIndex.value = roleConfigs[role].loadingIndex;
+
+  // 如果用户没有输入内容，只是切换角色，不发起网络请求，直接显示本地开场白
+  if (!message || message.trim() === "") {
+    chatMessages.value.push({
+      message: roleGreetings[loadingIndex.value],
+      role: "assistant",
+    });
+    chatMessages.value = [...chatMessages.value];
+    loadingIndex.value = 0;
+    return;
+  }
+
   chatMessages.value.push({
     message: rolePrompts[loadingIndex.value],
     role: "system",
   });
   chatMessages.value.push({
-    message: "如果你需要回复html等可以被浏览器渲染的内容，请在回复时进行转义，比如使用&lt;div&gt;代替<div>",
+    message:
+      "如果你需要回复html等可以被浏览器渲染的内容，请在回复时进行转义，比如使用&lt;div&gt;代替<div>",
     role: "system",
   });
 
@@ -914,6 +1033,17 @@ async function handleRate(event) {
 onMounted(() => {
   document.addEventListener("visibilitychange", handleVisibilityChange);
 });
+
+onBeforeUnmount(() => {
+  finishEvalSession();
+});
+
+// 页面关闭/刷新时尽量通知后端结束会话
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => {
+    finishEvalSession();
+  });
+}
 </script>
 
 <style>

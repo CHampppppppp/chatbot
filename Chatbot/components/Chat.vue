@@ -338,8 +338,7 @@ const sendMessage = async () => {
 
 // 通用角色处理函数
 const handleRoleAction = (roleType) => {
-  const messageToSend = message.value?.trim() || "";
-  emit(roleType, messageToSend);
+  emit(roleType, "");
   message.value = "";
 
   scrollToBottom();

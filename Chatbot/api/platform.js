@@ -26,6 +26,32 @@ export const sendFeedback = async (messageId, feedback) => {
   return res.data;
 };
 
+export const startEvalSession = async () => {
+  const { $axios } = useNuxtApp();
+  const res = await $axios.post("/platform/session/start");
+  return res.data;
+};
+
+export const appendEvalSessionMessage = async (sessionId, messages) => {
+  const { $axios } = useNuxtApp();
+  const res = await $axios.post(`/platform/session/${sessionId}/message`, {
+    messages,
+  });
+  return res.data;
+};
+
+export const endEvalSession = async (sessionId) => {
+  const { $axios } = useNuxtApp();
+  const res = await $axios.post(`/platform/session/${sessionId}/end`);
+  return res.data;
+};
+
+export const getDimensions = async () => {
+  const { $axios } = useNuxtApp();
+  const res = await $axios.get("/platform/dimensions");
+  return res.data;
+};
+
 export const fetchChatStream = (url, data, onMessage) => {
   const controller = new AbortController();
   const { signal } = controller;
