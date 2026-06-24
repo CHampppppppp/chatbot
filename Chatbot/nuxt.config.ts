@@ -6,7 +6,7 @@ const apiBase =
   (isProduction ? "https://chatbot.mgsai.cn/api" : "http://localhost:8001");
 const webBaseUrl =
   process.env.NUXT_PUBLIC_WEB_BASE_URL ||
-  (isProduction ? "https://chatbot.mgsai.cn" : "http://localhost:3000");
+  (isProduction ? "https://chatbot.mgsai.cn" : "http://localhost:3003");
 const appBase = process.env.NUXT_PUBLIC_APP_BASE || "/app1";
 const ssoLoginUrl =
   process.env.NUXT_PUBLIC_SSO_LOGIN_URL ||
@@ -55,4 +55,8 @@ export default defineNuxtConfig({
 
   css: ["~/assets/css/app.css"],
   modules: ["@nuxtjs/tailwindcss"],
+
+  devServer: {
+    port: 3003,
+  },
 });

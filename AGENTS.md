@@ -4,7 +4,7 @@
 
 这是一个前后端分离的校园智能体项目。
 
-- `Chatbot/`: Nuxt 3 前端，默认开发地址当前为 `http://localhost:3000/app1`。
+- `Chatbot/`: Nuxt 3 前端，默认开发地址当前为 `http://localhost:3003/app1`。
 - `ChatbotApi/`: FastAPI 后端，默认开发地址当前为 `http://localhost:8001`。
 - `dev.sh`: 本地一键启动脚本，会启动 Redis、后端和前端。
 
@@ -57,7 +57,7 @@ ENV=dev uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 当前前端配置包含 `app.baseURL = "/app1"`，所以本地访问路径通常是：
 
 ```text
-http://localhost:3000/app1
+http://localhost:3003/app1
 ```
 
 如果登录守卫因为缺少课程路径而跳授权页，可以在浏览器控制台临时设置：
@@ -101,6 +101,15 @@ localStorage.setItem("base_path", "app1")
 - Cookie 的 `secure`、`samesite` 要区分 dev/prod。
 - 不要用 `print` 打业务日志、用户身份、SSO 响应或异常详情；使用 logger，并避免泄漏敏感信息。
 - Redis、数据库、第三方 AI 服务异常要返回稳定错误结构。
+
+## 维度评分触发规则
+
+- 只有带 RAG 的聊天角色（`校园精灵 /chat`、`电脑博士 /computerDoctor`）会在单轮 SSE 响应结束后自动触发维度评分。
+- 其他角色（灵感超人、智能画家、文化达人、妙语奇兵）不触发单轮评分。
+- 前端通过会话接口在页面生命周期内累计对话，用户退出或关闭页面时批量评分：
+  - `POST /platform/session/start` 开始会话
+  - `POST /platform/session/{session_id}/message` 追加消息
+  - `POST /platform/session/{session_id}/end` 结束会话并后台评分
 
 ## 沟通约定
 - 结论先行，再给理由。

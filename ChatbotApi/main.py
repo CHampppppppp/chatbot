@@ -36,7 +36,7 @@ class NoHeadFilter(logging.Filter):
 load_dotenv()
 
 # 配置日志
-logging.basicConfig(level=logging.WARNING)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # 获取 Uvicorn 的 access logger 并添加过滤器
@@ -217,8 +217,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://nginx",
-        "http://127.0.0.1:3000",
-        "http://localhost:3000",
+        "http://127.0.0.1:3003",
+        "http://localhost:3003",
         "https://chatbot.mgsai.cn",
         "https://szyx.zjer.cn",
     ],

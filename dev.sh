@@ -39,7 +39,7 @@ fi
 
 # 检查端口占用，先清理
 lsof -ti:8001 | xargs kill -9 2>/dev/null || true
-lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+lsof -ti:3003 | xargs kill -9 2>/dev/null || true
 
 # 启动后端
 echo "启动后端..."
@@ -57,7 +57,7 @@ FRONT_PID=$!
 echo ""
 echo "========================================="
 echo "  后端: http://localhost:8001"
-echo "  前端: http://localhost:3000/app1"
+echo "  前端: http://localhost:3003/app1"
 echo "  API文档: http://localhost:8001/docs"
 echo "========================================="
 echo ""
