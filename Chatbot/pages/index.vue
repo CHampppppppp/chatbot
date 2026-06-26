@@ -1014,19 +1014,21 @@ async function handleRate(event) {
   ResourceRate.value.close();
   ResourceRate.value.classList.add("hidden");
 
-  // 数据埋点
   const type = isImgRate.value ? 9 : 7;
-  await records(type, {
-    name: "资源评分",
-    videoUrl: resourceVideoUrl.value,
-    text_book: resourceTextBook.value,
-    rate: resourceRate.value,
-    time: resourceVideoTimer,
-  });
-
-  // 恢复记录状态
-  isImgRate.value = false;
-  resourceRate.value = 5;
+  try {
+    await records(type, {
+      name: "资源评分",
+      videoUrl: resourceVideoUrl.value,
+      text_book: resourceTextBook.value,
+      rate: resourceRate.value,
+      time: resourceVideoTimer,
+    });
+  } catch (error) {
+    console.error("资源评分提交失败:", error);
+  } finally {
+    isImgRate.value = false;
+    resourceRate.value = 5;
+  }
 }
 
 // const AlertMap = [
