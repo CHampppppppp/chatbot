@@ -974,12 +974,14 @@ function handleClickResourceVideo(e) {
     'a.resource-link[data-resource-role="computerDoctor"]'
   );
   if (resourceLink && currentRole.value === "computerDoctor") {
-    resourceVideoTimer = Date.now();
+    resourceVideoTimer = 0;
     resourceVideoUrl.value = resourceLink.href;
     resourceTextBook.value = "";
     isImgRate.value = false;
-    ResourceRate.value.classList.remove("hidden");
-    ResourceRate.value.showModal();
+    ResourceRate.value?.classList.remove("hidden");
+    if (!ResourceRate.value?.open) {
+      ResourceRate.value?.showModal();
+    }
     return;
   }
 
