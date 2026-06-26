@@ -969,6 +969,20 @@ const resourceVideoUrl = ref("");
 const resourceTextBook = ref("");
 const resourceRate = ref(5);
 function handleClickResourceVideo(e) {
+  // 电脑博士资源链接强制评分
+  const resourceLink = e.target.closest(
+    'a.resource-link[data-resource-role="computerDoctor"]'
+  );
+  if (resourceLink && currentRole.value === "computerDoctor") {
+    resourceVideoTimer = Date.now();
+    resourceVideoUrl.value = resourceLink.href;
+    resourceTextBook.value = "";
+    isImgRate.value = false;
+    ResourceRate.value.classList.remove("hidden");
+    ResourceRate.value.showModal();
+    return;
+  }
+
   // 记录点击视频链接
   if (e.target.id === "resource_video") {
     resourceVideoTimer = Date.now();
