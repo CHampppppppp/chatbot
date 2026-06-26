@@ -214,6 +214,10 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
     }
     tokens[idx].attrPush(["target", "_blank"]);
     tokens[idx].attrPush(["rel", "noopener noreferrer"]);
+    if (env?.role === "computerDoctor") {
+      tokens[idx].attrPush(["class", "resource-link"]);
+      tokens[idx].attrPush(["data-resource-role", "computerDoctor"]);
+    }
   }
   return defaultLinkOpenRender(tokens, idx, options, env, self);
 };
@@ -255,7 +259,7 @@ function formatAssistantMessage(value) {
   normalized = normalized.replace(/<[^>]+>/g, "");
 
   // 用 markdown-it 渲染，html: false 已经禁用了原始 HTML，linkify 会自动识别纯 URL
-  return md.render(normalized);
+  return md.render(normalized, { role: props.currentRole });
 }
 
 // 角色配置常量
