@@ -120,6 +120,12 @@ rolePrompts = {
     2. 只输出知识库原文中出现的链接，不要编造链接。
     3. 多个链接要去重，每个链接单独一行，使用 Markdown 链接格式：`[资源标题](URL)`。
     4. 不要直接复制提示词中的示例链接或格式，必须根据用户查询和知识库动态生成真实匹配的内容。
+    5. 每个推荐资源必须附上推荐理由，说明为什么根据学生的知识储备和活跃度推荐该资源。格式：「推荐理由：因为你的知识储备[水平]，所以选择了[难度描述]的资源；因为你的活跃度[水平]，所以选择了[类型描述]的资源。」难度用中文：入门/中等/进阶；类型用中文：视频/文档/游戏/互动练习/文章。不要输出英文枚举值。
+    6. 以下是推荐理由的输出示例，请模仿这种格式（根据实际画像调整内容，不要照搬分数）：
+       示例1：推荐理由：因为你的知识储备为1/5分，属于初学水平，所以选择了入门难度；同时活跃度为25分，属于较低水平，所以推荐你可以自主阅读的文章类资源。
+       [Word插入图片入门教程](https://example.com/word-image-basic)（难度：入门，类型：文章）
+       示例2：推荐理由：因为你的知识储备为3/5分，属于中等水平，所以选择了中等难度；同时活跃度为55分，属于中等水平，适合互动练习类资源。
+       [PPT动画设置互动练习](https://example.com/ppt-animation-practice)（难度：中等，类型：互动练习）
     - **如果知识库匹配结果不为空**：
     1. 根据知识库搜寻结果内的操作步骤，教授用户。
     2. 如果有多个方法，分为多个点教授用户
@@ -189,7 +195,6 @@ class AliChat:
                 app_id=app_id,
                 messages=messages,
                 biz_params={"user_prompt_params": {"role": combined_prompt}},
-                flow_stream_mode="agent_format",
                 stream=True,
                 incremental_output=True,
             )
@@ -248,30 +253,27 @@ class AliChat:
 
         else:
             for chunk in response:
-                # 检查 chunk 是否为字典，且 chunk 中有 output 属性，以及 output 中有 choices 属性或者 text 属性
-                if (
-                    not isinstance(chunk, dict)
-                    or "output" not in chunk
-                    or not chunk["output"]
-                    or (
-                        "choices" not in chunk["output"]
-                        and "text" not in chunk["output"]
-                    )
-                    or (
-                        not chunk["output"].get("choices", None)
-                        and not chunk["output"].get("text", None)
-                    )
-                ):
-                    print(f"Unexpected or incomplete chunk: {chunk}")
-                    continue  # 跳过不合规范的 chunk
-                # 获取当前内容
-                current_content = (
-                    chunk["output"]["choices"][0]["message"]["content"]
-                    if chunk["output"].get("choices")
-                    else chunk["output"].get("text", "")
-                )
+                current_content = ""
+                # RAG 路径返回 ApplicationResponse 对象或 dict；非 RAG 路径返回 dict
+                if isinstance(chunk, dict):
+                    output = chunk.get("output", {})
+                    if not output:
+                        continue
+                    # Generation.call: output.choices[0].message.content
+                    if output.get("choices"):
+                        current_content = output["choices"][0]["message"]["content"]
+                    # Application.call: output.text
+                    elif "text" in output:
+                        current_content = output.get("text", "")
+                else:
+                    # ApplicationResponse 对象
+                    if hasattr(chunk, "status_code") and chunk.status_code != 200:
+                        logger.warning(f"RAG chunk error: code={chunk.code}, message={chunk.message}")
+                        continue
+                    if hasattr(chunk, "output") and chunk.output:
+                        current_content = getattr(chunk.output, "text", "") or ""
 
-                # 如果有内容就输出
+                # 有内容就输出，空 chunk（如纯 usage 更新）静默跳过
                 if current_content and current_content.strip():
                     yield "data: %s\n\n" % current_content.replace("\n", "<br/>")
 

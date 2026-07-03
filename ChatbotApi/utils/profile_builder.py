@@ -70,7 +70,8 @@ def _build_recommendation_rules(profile: dict) -> list[str]:
     return rules
 
 
-def build_profile_prompt(profile: dict) -> str:
+def build_profile_prompt(profile: dict, role: str = "") -> str:
+    """构建用户画像 prompt。仅当 role 为 computerDoctor 时才拼接资源推荐规则和推荐理由要求。"""
     if not profile:
         return ""
     parts = []
@@ -89,19 +90,26 @@ def build_profile_prompt(profile: dict) -> str:
     if profile.get("active_score") is not None:
         parts.append(f"活跃度：{profile['active_score']} 分")
 
-    rules = _build_recommendation_rules(profile)
-
     sections = []
     if parts:
         sections.append("当前对话的学生画像：" + "，".join(parts) + "。")
-    if rules:
-        sections.append(
-            "请根据上述画像，严格按以下规则从知识库中选择并推荐资源：\n"
-            + "\n".join(f"{i + 1}. {rule}" for i, rule in enumerate(rules))
-        )
+
+    # 仅电脑博士角色需要资源推荐规则和推荐理由要求
+    if role == "computerDoctor":
+        rules = _build_recommendation_rules(profile)
+        if rules:
+            sections.append(
+                "请根据上述画像，严格按以下规则从知识库中选择并推荐资源：\n"
+                + "\n".join(f"{i + 1}. {rule}" for i, rule in enumerate(rules))
+            )
 
     if not sections:
         return ""
+
+    # 非电脑博士角色只返回画像信息，不拼接推荐规则
+    if role != "computerDoctor":
+        return "\n\n".join(sections)
+
     return (
         "\n\n".join(sections)
         + "\n\n"
@@ -111,6 +119,17 @@ def build_profile_prompt(profile: dict) -> str:
         "2. 请严格按照上述画像规则选择资源：知识储备低优先选择 difficulty=LOW，中等选择 MEDIUM，高选择 HIGH；"
         "活跃度低优先选择 resourceType=DOCUMENT 或 ARTICLE，中等优先选择 VIDEO 或 PRACTICE，高优先选择 GAME、VIDEO 或 PRACTICE。\n"
         "3. 如果多个资源都符合条件，按相关度从高到低排序；如果完全不符合画像的资源，不要推荐。\n"
-        "4. 推荐时必须输出资源链接，使用 Markdown 链接格式 `[资源标题](URL)`，并标注该资源的 difficulty 和 resourceType，简要说明推荐理由。"
-        "不要直接复制提示词中的示例链接或格式，必须根据用户查询和知识库动态生成真实匹配的内容。"
+        "4. 推荐时必须输出资源链接，使用 Markdown 链接格式 `[资源标题](URL)`，并用中文标注难度和类型，附上推荐理由。"
+        "难度映射：LOW→入门，MEDIUM→中等，HIGH→进阶；类型映射：VIDEO→视频，DOCUMENT→文档，GAME→游戏，PRACTICE→互动练习，ARTICLE→文章。只写中文，不要输出英文枚举值。"
+        "不要直接复制提示词中的示例链接或格式，必须根据用户查询和知识库动态生成真实匹配的内容。\n\n"
+        "【必须遵守】推荐理由格式：\n"
+        "每个推荐资源必须附上推荐理由，说明为什么根据该学生的知识储备和活跃度推荐。"
+        "格式：「推荐理由：因为你的知识储备为X/5分，属于[水平]，所以选择了[难度中文]的资源；因为你的活跃度为X分，属于[水平]，所以选择了[类型中文]的资源。」\n\n"
+        "示例（根据实际画像调整，不要照搬分数）：\n"
+        "示例1：推荐理由：因为你的知识储备为1/5分，属于初学水平，所以选择了入门难度；同时活跃度为25分，属于较低水平，所以推荐你可以自主阅读的文章类资源。\n"
+        "[Word插入图片入门教程](https://example.com/word-image-basic)（难度：入门，类型：文章）\n\n"
+        "示例2：推荐理由：因为你的知识储备为3/5分，属于中等水平，所以选择了中等难度；同时活跃度为55分，属于中等水平，适合互动练习类资源。\n"
+        "[PPT动画设置互动练习](https://example.com/ppt-animation-practice)（难度：中等，类型：互动练习）\n\n"
+        "示例3：推荐理由：因为你的知识储备为4/5分，属于较高水平，所以选择了进阶难度；同时活跃度为85分，属于较高水平，适合高互动的游戏类资源。\n"
+        "[PPT综合设计挑战](https://example.com/ppt-design-challenge)（难度：进阶，类型：游戏）"
     )
