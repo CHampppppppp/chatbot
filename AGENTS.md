@@ -20,6 +20,7 @@
 - 后端配置放在 `ChatbotApi/common/config.py`，但密钥值必须来自环境变量。
 - 后端数据库连接和模型放在 `ChatbotApi/db/`。
 - 后端第三方 AI 服务封装放在 `ChatbotApi/utils/`。
+- 后端配置与鉴权回归测试放在 `ChatbotApi/tests/`，文件以 `test_*.py` 命名；测试不得依赖真实数据库、Redis 或第三方服务。
 
 不要把临时脚本、调试输出、测试上传文件散放到根目录。需要临时验证时优先使用系统临时目录，完成后清理。
 
