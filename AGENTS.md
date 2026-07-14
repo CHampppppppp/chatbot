@@ -30,6 +30,7 @@
 - 禁止把 `.env` 内容打印到日志或回复里。
 - 修改 `.env`、密钥、token、CI/CD 配置前必须先询问用户。
 - 新增配置时优先使用环境变量，并在文档中说明变量名、用途和默认行为。
+- IP + HTTP 部署可通过 `CORS_ALLOWED_ORIGINS` 配置前端来源，Cookie 默认使用 `secure=false` 和 `samesite=lax`；切换 HTTPS 时必须显式设置 `COOKIE_SECURE=true`，跨站 Cookie 还需设置 `COOKIE_SAMESITE=none`。
 - dev/prod 行为必须显式区分，不允许让本地开发默认跳生产 SSO 或生产域名。
 
 ## 本地开发

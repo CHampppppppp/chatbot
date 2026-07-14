@@ -1,12 +1,22 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 const isProduction = process.env.NODE_ENV === "production";
-const apiBase =
-  process.env.NUXT_API_BASE ||
-  process.env.NUXT_PUBLIC_API_BASE ||
-  (isProduction ? "https://chatbot.mgsai.cn/api" : "http://localhost:8001");
-const webBaseUrl =
-  process.env.NUXT_PUBLIC_WEB_BASE_URL ||
-  (isProduction ? "https://chatbot.mgsai.cn" : "http://localhost:3005");
+const getProductionEnv = (name: string) => {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} must be configured for a production build`);
+  }
+  return value;
+};
+
+const publicApiBase = isProduction
+  ? getProductionEnv("NUXT_PUBLIC_API_BASE")
+  : "http://localhost:8001";
+const apiBase = isProduction
+  ? process.env.NUXT_API_BASE || publicApiBase
+  : "http://localhost:8001";
+const webBaseUrl = isProduction
+  ? getProductionEnv("NUXT_PUBLIC_WEB_BASE_URL")
+  : "http://localhost:3005";
 const appBase = process.env.NUXT_PUBLIC_APP_BASE || "/app1";
 const ssoLoginUrl =
   process.env.NUXT_PUBLIC_SSO_LOGIN_URL ||
@@ -30,7 +40,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     apiBase,
     public: {
-      apiBase,
+      apiBase: publicApiBase,
       appBase,
       webBaseUrl,
       ssoLoginUrl,

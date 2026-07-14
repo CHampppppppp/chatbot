@@ -108,8 +108,8 @@ def set_id_token_cookie(
         key="id_token",
         value=id_token,
         httponly=True,
-        secure=not config.DEV_MODE,
-        samesite="lax" if config.DEV_MODE else prod_samesite,
+        secure=config.COOKIE_SECURE,
+        samesite=config.get_cookie_samesite(),
         max_age=max_age,
     )
 
@@ -118,8 +118,8 @@ def delete_id_token_cookie(response: Response):
     response.delete_cookie(
         key="id_token",
         path="/",
-        secure=not config.DEV_MODE,
-        samesite="lax" if config.DEV_MODE else "strict",
+        secure=config.COOKIE_SECURE,
+        samesite=config.get_cookie_samesite(),
     )
 
 
@@ -128,8 +128,8 @@ def set_session_cookie(response: Response, key: str, value: str):
         key=key,
         value=value,
         httponly=True,
-        secure=not config.DEV_MODE,
-        samesite="lax" if config.DEV_MODE else "strict",
+        secure=config.COOKIE_SECURE,
+        samesite=config.get_cookie_samesite(),
     )
 
 

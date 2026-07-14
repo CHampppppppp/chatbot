@@ -1,5 +1,6 @@
 import importlib
 import os
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -22,7 +23,24 @@ class DeploymentConfigTest(unittest.TestCase):
             ["http://47.114.56.194:28069", "http://localhost:3005"],
         )
         self.assertFalse(config.COOKIE_SECURE)
+        self.assertEqual(config.get_cookie_samesite(), "lax")
         self.assertEqual(config.COOKIE_SAMESITE, "lax")
+
+    def test_http_cookie_delivery_is_the_default_for_production(self):
+        environment = {
+            "ENV": "production",
+            "SECRET_KEY": "test-secret",
+            "SSO_APP_KEY": "test-app-key",
+            "SSO_SECRET_KEY": "test-sso-secret",
+        }
+
+        with patch("dotenv.load_dotenv"), patch.dict(
+            os.environ, environment, clear=True
+        ):
+            sys.modules.pop("common.config", None)
+            config = importlib.import_module("common.config")
+
+        self.assertFalse(config.COOKIE_SECURE)
 
 
 if __name__ == "__main__":

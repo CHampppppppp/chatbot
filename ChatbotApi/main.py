@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
+from common import config
 from router.router import api_router
 
 class NoHeadFilter(logging.Filter):
@@ -215,13 +216,7 @@ app = FastAPI(lifespan=lifespan)
 # CORS配置
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://nginx",
-        "http://127.0.0.1:3005",
-        "http://localhost:3005",
-        "https://chatbot.mgsai.cn",
-        "https://szyx.zjer.cn",
-    ],
+    allow_origins=config.CORS_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
