@@ -90,11 +90,12 @@ async def handle_chat_request(
         enable_dimension_eval: 是否在本轮对话结束后触发维度评分
     """
     profile_prompt = ""
+    current_role = extra_params.get("role", "") if extra_params else ""
     if token_data and token_data.userId and db:
         from utils.profile_builder import build_profile_prompt, get_user_profile
 
         profile = get_user_profile(db, token_data.userId)
-        profile_prompt = build_profile_prompt(profile)
+        profile_prompt = build_profile_prompt(profile, role=current_role)
 
     if profile_prompt:
         logger.info(f"用户画像已注入 prompt: {token_data.userId}")
