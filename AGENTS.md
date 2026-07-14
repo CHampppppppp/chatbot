@@ -4,7 +4,7 @@
 
 这是一个前后端分离的校园智能体项目。
 
-- `Chatbot/`: Nuxt 3 前端，默认开发地址当前为 `http://localhost:3003/app1`。
+- `Chatbot/`: Nuxt 3 前端，默认开发地址当前为 `http://localhost:3005/app1`。
 - `ChatbotApi/`: FastAPI 后端，默认开发地址当前为 `http://localhost:8001`。
 - `dev.sh`: 本地一键启动脚本，会启动 Redis、后端和前端。
 
@@ -57,7 +57,7 @@ ENV=dev uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 当前前端配置包含 `app.baseURL = "/app1"`，所以本地访问路径通常是：
 
 ```text
-http://localhost:3003/app1
+http://localhost:3005/app1
 ```
 
 如果登录守卫因为缺少课程路径而跳授权页，可以在浏览器控制台临时设置：

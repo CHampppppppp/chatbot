@@ -217,8 +217,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://nginx",
-        "http://127.0.0.1:3003",
-        "http://localhost:3003",
+        "http://127.0.0.1:3005",
+        "http://localhost:3005",
         "https://chatbot.mgsai.cn",
         "https://szyx.zjer.cn",
     ],
