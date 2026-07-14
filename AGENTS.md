@@ -56,6 +56,32 @@ source venv/bin/activate
 ENV=dev uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
+PM2 一键启动（需全局安装 pm2：`npm install -g pm2`）：
+
+```bash
+# 启动前后端
+pm2 start ecosystem.config.cjs
+
+# 查看状态
+pm2 status
+
+# 查看实时日志
+pm2 logs
+
+# 查看某个进程具体日志
+pm2 logs chatbot-backend
+pm2 logs chatbot-frontend
+
+# 重启
+pm2 restart ecosystem.config.cjs
+
+# 停止
+pm2 stop ecosystem.config.cjs
+
+# 停止并删除
+pm2 delete ecosystem.config.cjs
+```
+
 当前前端配置包含 `app.baseURL = "/app1"`，所以本地访问路径通常是：
 
 ```text
