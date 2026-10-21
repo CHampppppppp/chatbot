@@ -69,6 +69,12 @@ logs/
 tmp/
 temp/
 
+# === 文档 & 数据文件 ===
+*.xlsx
+*.xls
+*.csv
+docs/
+
 # === 子项目自带的产物（兜底，即使子项目 .gitignore 失效也不入库） ===
 ChatbotApi/venv/
 ChatbotApi/__pycache__/
